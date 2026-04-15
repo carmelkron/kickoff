@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { AuthUser, LobbyHistoryEntry, RatingEntry, Gender } from '../types';
+import {
+  createFriendRequestNotification,
+  createFriendRequestResolutionNotification,
+  markFriendRequestNotificationsHandled,
+} from '../lib/appNotifications';
 import { requireSupabase } from '../lib/supabase';
 import { uploadAvatar } from '../lib/storage';
 import { normalizeText, validateRegisterDraft } from '../lib/validation';
@@ -444,6 +449,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
+    if (status === 'pending') {
+      await createFriendRequestNotification(currentUser.id, currentUser.name, targetId);
+    }
+
     await refresh((await supabase.auth.getUser()).data.user?.id ?? null);
   };
 
@@ -463,6 +472,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
 
+    await markFriendRequestNotificationsHandled(requesterId, currentUser.id);
+    await createFriendRequestResolutionNotification(currentUser.id, currentUser.name, requesterId, 'accepted');
+
     await refresh((await supabase.auth.getUser()).data.user?.id ?? null);
   };
 
@@ -481,6 +493,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) {
       throw error;
     }
+
+    await markFriendRequestNotificationsHandled(requesterId, currentUser.id);
+    await createFriendRequestResolutionNotification(currentUser.id, currentUser.name, requesterId, 'declined');
 
     await refresh((await supabase.auth.getUser()).data.user?.id ?? null);
   };

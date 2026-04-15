@@ -1,6 +1,10 @@
-import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType } from '../types';
+import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus } from '../types';
+import { createFriendJoinedLobbyNotifications, createOrganizerSummaryNotification, fetchAcceptedFriendIds } from './appNotifications';
 import { requireSupabase } from './supabase';
 import { getJoinLobbyError, normalizeText, validateCreateLobbyPayload } from './validation';
+
+const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, is_private, price, description, created_by, distance_km, game_type, field_type, gender_restriction, latitude, longitude';
+const LOBBY_SELECT_FIELDS_WITH_STATUS = `${LOBBY_SELECT_FIELDS}, status`;
 
 function toAppError(error: unknown, fallbackMessage: string) {
   if (error instanceof Error) {
@@ -18,6 +22,30 @@ function toAppError(error: unknown, fallbackMessage: string) {
   }
 
   return new Error(fallbackMessage);
+}
+
+function getErrorText(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object') {
+    const maybeMessage = 'message' in error && typeof error.message === 'string' ? error.message : '';
+    const maybeDetails = 'details' in error && typeof error.details === 'string' ? error.details : '';
+    const maybeHint = 'hint' in error && typeof error.hint === 'string' ? error.hint : '';
+    return [maybeMessage, maybeDetails, maybeHint].filter(Boolean).join(' ');
+  }
+
+  return '';
+}
+
+function isMissingLobbyStatusColumnError(error: unknown) {
+  const text = getErrorText(error).toLowerCase();
+  return text.includes('status') && (
+    text.includes('column')
+    || text.includes('schema cache')
+    || text.includes('could not find')
+  );
 }
 
 type ProfileRow = {
@@ -56,6 +84,7 @@ type LobbyRow = {
   gender_restriction: GenderRestriction;
   latitude: number | null;
   longitude: number | null;
+  status?: 'active' | 'deleted' | 'expired' | null;
 };
 
 type MembershipRow = {
@@ -64,6 +93,48 @@ type MembershipRow = {
   status: 'joined' | 'waitlisted' | 'pending_confirm' | 'left';
   created_at?: string;
 };
+
+function resolveLobbyStatus(row: LobbyRow): LobbyStatus {
+  if (row.status === 'deleted') {
+    return 'deleted';
+  }
+
+  if (row.status === 'expired') {
+    return 'expired';
+  }
+
+  return new Date(row.datetime) > new Date() ? 'active' : 'expired';
+}
+
+async function fetchLobbyRows(): Promise<LobbyRow[]> {
+  const supabase = requireSupabase();
+  const withStatus = await supabase
+    .from('lobbies')
+    .select(LOBBY_SELECT_FIELDS_WITH_STATUS)
+    .order('datetime', { ascending: true });
+
+  if (!withStatus.error) {
+    return (withStatus.data ?? []) as LobbyRow[];
+  }
+
+  if (!isMissingLobbyStatusColumnError(withStatus.error)) {
+    throw withStatus.error;
+  }
+
+  const fallback = await supabase
+    .from('lobbies')
+    .select(LOBBY_SELECT_FIELDS)
+    .order('datetime', { ascending: true });
+
+  if (fallback.error) {
+    throw fallback.error;
+  }
+
+  return ((fallback.data ?? []) as LobbyRow[]).map((row) => ({
+    ...row,
+    status: 'active',
+  }));
+}
 
 function mapProfile(row: ProfileRow): Player {
   return {
@@ -149,10 +220,7 @@ export async function fetchLobbies(): Promise<Lobby[]> {
   const supabase = requireSupabase();
 
   const [{ data: lobbyRows, error: lobbiesError }, { data: profileRows, error: profilesError }, { data: membershipRows, error: membershipsError }] = await Promise.all([
-    supabase
-      .from('lobbies')
-      .select('id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, is_private, price, description, created_by, distance_km, game_type, field_type, gender_restriction, latitude, longitude')
-      .order('datetime', { ascending: true }),
+    fetchLobbyRows().then((data) => ({ data, error: null })),
     supabase
       .from('profiles')
       .select('id, email, name, initials, avatar_color, rating, games_played, position, bio, photo_url, gender, rating_history, lobby_history'),
@@ -181,6 +249,7 @@ export async function fetchLobbies(): Promise<Lobby[]> {
   }
 
   return ((lobbyRows ?? []) as LobbyRow[]).map((row) => {
+    const lobbyStatus = resolveLobbyStatus(row);
     const memberships = [...(membershipsByLobby.get(row.id) ?? [])].sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''));
     const players = memberships
       .filter((membership) => membership.status === 'joined')
@@ -214,8 +283,9 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       genderRestriction: row.gender_restriction ?? 'none',
       latitude: row.latitude ?? undefined,
       longitude: row.longitude ?? undefined,
+      status: lobbyStatus,
     };
-  });
+  }).filter((lobby) => lobby.status !== 'deleted');
 }
 
 export async function fetchLobbyById(id: string): Promise<Lobby | null> {
@@ -262,7 +332,7 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
   const supabase = requireSupabase();
   const id = `lobby_${crypto.randomUUID()}`;
 
-  const { error: lobbyError } = await supabase.from('lobbies').insert({
+  const lobbyPayload = {
     id,
     title: normalizeText(input.title),
     address: normalizeText(input.address),
@@ -282,7 +352,34 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     gender_restriction: input.genderRestriction ?? 'none',
     latitude: input.latitude ?? null,
     longitude: input.longitude ?? null,
-  });
+    status: 'active' as const,
+  };
+
+  let { error: lobbyError } = await supabase.from('lobbies').insert(lobbyPayload);
+
+  if (lobbyError && isMissingLobbyStatusColumnError(lobbyError)) {
+    ({ error: lobbyError } = await supabase.from('lobbies').insert({
+      id: lobbyPayload.id,
+      title: lobbyPayload.title,
+      address: lobbyPayload.address,
+      city: lobbyPayload.city,
+      datetime: lobbyPayload.datetime,
+      max_players: lobbyPayload.max_players,
+      num_teams: lobbyPayload.num_teams,
+      players_per_team: lobbyPayload.players_per_team,
+      min_rating: lobbyPayload.min_rating,
+      is_private: lobbyPayload.is_private,
+      price: lobbyPayload.price,
+      description: lobbyPayload.description,
+      created_by: lobbyPayload.created_by,
+      distance_km: lobbyPayload.distance_km,
+      game_type: lobbyPayload.game_type,
+      field_type: lobbyPayload.field_type,
+      gender_restriction: lobbyPayload.gender_restriction,
+      latitude: lobbyPayload.latitude,
+      longitude: lobbyPayload.longitude,
+    }));
+  }
 
   if (lobbyError) {
     throw toAppError(lobbyError, 'Failed to create game.');
@@ -298,15 +395,24 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     throw toAppError(membershipError, 'Failed to join the game after creating it.');
   }
 
+  const createdLobby = await fetchLobbyById(id);
+  if (createdLobby) {
+    await createOrganizerSummaryNotification(input.createdBy, createdLobby);
+  }
+
   return id;
 }
 
 export async function upsertLobbyMembership(lobbyId: string, profileId: string, status: MembershipRow['status']) {
   const supabase = requireSupabase();
+  let resolvedProfile: Player | null = null;
+  let wasJoinedBefore = false;
 
   if (status === 'joined' || status === 'waitlisted') {
     const [lobby, profile] = await Promise.all([fetchLobbyById(lobbyId), fetchProfileById(profileId)]);
     const resolvedLobby = lobby;
+    resolvedProfile = profile;
+    wasJoinedBefore = resolvedLobby ? resolvedLobby.players.some((player) => player.id === profileId) : false;
     const joinError =
       resolvedLobby && profile
         ? getJoinLobbyError(resolvedLobby, profile, { allowExistingWaitlist: status === 'joined' })
@@ -340,6 +446,18 @@ export async function upsertLobbyMembership(lobbyId: string, profileId: string, 
   if (error) {
     throw error;
   }
+
+  const nextLobby = await fetchLobbyById(lobbyId);
+  if (!nextLobby) {
+    return;
+  }
+
+  if (status === 'joined' && !wasJoinedBefore && resolvedProfile) {
+    const friendIds = await fetchAcceptedFriendIds(profileId);
+    await createFriendJoinedLobbyNotifications(profileId, resolvedProfile.name, friendIds, nextLobby);
+  }
+
+  await createOrganizerSummaryNotification(profileId, nextLobby);
 }
 
 export async function deleteLobbyMembership(lobbyId: string, profileId: string) {
@@ -429,6 +547,27 @@ export async function updateLobby(input: UpdateLobbyInput) {
 
   if (error) {
     throw error;
+  }
+}
+
+export async function deleteLobby(lobbyId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from('lobbies')
+    .update({ status: 'deleted' })
+    .eq('id', lobbyId)
+    .select('id')
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingLobbyStatusColumnError(error)) {
+      throw new Error('Lobby status column is missing. Apply the Supabase lobby status patch and try again.');
+    }
+    throw toAppError(error, 'Failed to delete game.');
+  }
+
+  if (!data) {
+    throw new Error('Failed to update lobby status.');
   }
 }
 

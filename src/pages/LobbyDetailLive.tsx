@@ -1,10 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, Lock, MapPin, Pencil, ShieldCheck, Star, Trophy, Users } from 'lucide-react';
+import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, Lock, MapPin, Pencil, ShieldCheck, Star, Trash2, Trophy, Users } from 'lucide-react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import RatingDisplay, { RatingBadge } from '../components/RatingDisplay';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { deleteLobbyMembership, fetchContributions, fetchLobbyById, toggleContribution, upsertLobbyMembership } from '../lib/appData';
+import { deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, toggleContribution, upsertLobbyMembership } from '../lib/appData';
 import { getJoinLobbyError } from '../lib/validation';
 import type { ContributionType, Lobby } from '../types';
 import { formatDateTime } from '../utils/format';
@@ -32,6 +32,7 @@ export default function LobbyDetailLive() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [contributions, setContributions] = useState<{ profileId: string; type: ContributionType }[]>([]);
   const [distancePreference, setDistancePreference] = useState(() => loadSessionDistancePreference());
 
@@ -93,6 +94,8 @@ export default function LobbyDetailLive() {
   const avg = avgRating(resolvedLobby.players);
   const isCompetitive = resolvedLobby.gameType === 'competitive';
   const isCreator = currentUser?.id === resolvedLobby.createdBy;
+  const isLobbyActive = resolvedLobby.status === 'active';
+  const isLobbyExpired = resolvedLobby.status === 'expired';
   const hasCoords = resolvedLobby.latitude != null && resolvedLobby.longitude != null;
   const hasCurrentLocation =
     distancePreference.locationMode === 'current' && distancePreference.currentCoords != null;
@@ -154,6 +157,11 @@ export default function LobbyDetailLive() {
       return;
     }
 
+    if (!isLobbyActive) {
+      setError(lang === 'he' ? 'לא ניתן להצטרף ללובי שפג תוקפו.' : 'You cannot join an expired lobby.');
+      return;
+    }
+
     const joinError = getJoinLobbyError(resolvedLobby, currentUser);
     if (joinError) {
       setError(joinError);
@@ -181,6 +189,24 @@ export default function LobbyDetailLive() {
     void runMembershipAction(() => upsertLobbyMembership(lobbyId, currentUser.id, 'joined'));
   }
 
+  async function handleDeleteLobby() {
+    if (!currentUser || !isCreator) {
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      await deleteLobby(lobbyId);
+      navigate('/', { replace: true });
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Failed to delete game');
+    } finally {
+      setSaving(false);
+      setShowDeleteConfirm(false);
+    }
+  }
+
   async function handleToggleContribution(type: ContributionType) {
     if (!currentUser) return;
     const currentlyActive = type === 'ball' ? ballContributors.has(currentUser.id) : speakerContributors.has(currentUser.id);
@@ -201,15 +227,54 @@ export default function LobbyDetailLive() {
           {t.lobby.back}
         </button>
         {isCreator && (
-          <button
-            onClick={() => navigate(`/lobby/${lobbyId}/edit`)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-600 border border-primary-200 hover:bg-primary-50 rounded-xl transition-colors"
-          >
-            <Pencil size={14} />
-            {lang === 'he' ? 'ערוך' : 'Edit'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate(`/lobby/${lobbyId}/edit`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-600 border border-primary-200 hover:bg-primary-50 rounded-xl transition-colors"
+            >
+              <Pencil size={14} />
+              {lang === 'he' ? 'ערוך' : 'Edit'}
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-60 rounded-xl transition-colors"
+            >
+              <Trash2 size={14} />
+              {t.lobby.delete}
+            </button>
+          </div>
         )}
       </div>
+
+      {isCreator && showDeleteConfirm && (
+        <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-semibold text-red-700">{t.lobby.deleteConfirm}</p>
+          <p className="mt-1 text-xs text-red-600">{t.lobby.deleteWarning}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              onClick={() => void handleDeleteLobby()}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+            >
+              {t.lobby.deleteApprove}
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              disabled={saving}
+              className="px-4 py-2 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 text-sm font-medium text-gray-700 transition-colors"
+            >
+              {t.lobby.deleteCancel}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isLobbyExpired && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          {lang === 'he' ? 'הלובי הזה פג תוקף ולכן לא ניתן יותר להצטרף אליו.' : 'This lobby has expired, so joining is no longer available.'}
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -406,7 +471,7 @@ export default function LobbyDetailLive() {
         </button>
       )}
 
-      {myStatus === 'pending_confirm' && (
+      {myStatus === 'pending_confirm' && isLobbyActive && (
         <div className="bg-green-50 border border-green-200 rounded-2xl p-5 mb-4 text-center">
           <p className="font-semibold text-green-800 mb-1">{lang === 'he' ? 'יש לך מקום!' : 'A spot opened for you!'}</p>
           <p className="text-sm text-green-700 mb-3">
@@ -431,7 +496,7 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {myStatus !== 'pending_confirm' && (
+      {myStatus !== 'pending_confirm' && isLobbyActive && (
         <>
           {myStatus === 'none' && (
             <button

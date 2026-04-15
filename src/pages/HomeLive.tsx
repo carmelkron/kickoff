@@ -25,10 +25,6 @@ function avgRating(players: { rating: number }[]) {
   return players.reduce((sum, p) => sum + p.rating, 0) / players.length;
 }
 
-function isFuture(lobby: Lobby) {
-  return new Date(lobby.datetime) > new Date();
-}
-
 // --- Session storage helpers ---
 type FilterState = {
   gameSearch: string;
@@ -219,7 +215,7 @@ export default function HomeLive() {
       : null;
 
   const futureLobbies = lobbies
-    .filter(isFuture)
+    .filter((lobby) => lobby.status === 'active')
     .map((lobby) => ({
       ...lobby,
       distanceKm:
@@ -564,7 +560,12 @@ export default function HomeLive() {
       ) : displayed.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {displayed.map((lobby) => (
-            <LobbyCard key={lobby.id} lobby={lobby} distanceNote={refPoint ? distanceSourceText : undefined} />
+            <LobbyCard
+              key={lobby.id}
+              lobby={lobby}
+              distanceLabel={refPoint ? undefined : t.home.distanceUnavailable}
+              distanceNote={refPoint ? distanceSourceText : undefined}
+            />
           ))}
         </div>
       ) : null}

@@ -5,6 +5,7 @@ export type Gender = 'male' | 'female' | 'other';
 export type GenderRestriction = 'none' | 'male' | 'female';
 export type FieldType = 'grass' | 'asphalt' | 'indoor';
 export type ContributionType = 'ball' | 'speaker';
+export type LobbyStatus = 'active' | 'deleted' | 'expired';
 
 export interface RatingEntry {
   date: string;
@@ -62,6 +63,7 @@ export interface Lobby {
   genderRestriction: GenderRestriction;
   latitude?: number;
   longitude?: number;
+  status: LobbyStatus;
 }
 
 export interface AuthUser {

@@ -47,6 +47,7 @@ create table if not exists public.lobbies (
   gender_restriction text not null default 'none' check (gender_restriction in ('none', 'male', 'female')),
   latitude double precision,
   longitude double precision,
+  status text not null default 'active' check (status in ('active', 'deleted')),
   created_at timestamptz not null default now()
 );
 
@@ -119,18 +120,32 @@ create table if not exists public.lobby_ratings (
   check (rater_profile_id <> rated_profile_id)
 );
 
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  profile_id text not null references public.profiles (id) on delete cascade,
+  actor_profile_id text references public.profiles (id) on delete cascade,
+  lobby_id text references public.lobbies (id) on delete cascade,
+  kind text not null check (kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'organizer_summary')),
+  data jsonb not null default '{}'::jsonb,
+  is_read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists profiles_auth_user_id_idx on public.profiles (auth_user_id);
 create index if not exists lobbies_datetime_idx on public.lobbies (datetime);
 create index if not exists lobby_memberships_profile_id_idx on public.lobby_memberships (profile_id);
 create index if not exists friend_requests_to_profile_status_idx on public.friend_requests (to_profile_id, status);
 create index if not exists lobby_ratings_lobby_id_idx on public.lobby_ratings (lobby_id);
 create index if not exists lobby_ratings_rated_profile_id_idx on public.lobby_ratings (rated_profile_id);
+create index if not exists notifications_profile_id_created_at_idx on public.notifications (profile_id, created_at desc);
+create index if not exists notifications_profile_id_is_read_idx on public.notifications (profile_id, is_read);
 
 alter table public.profiles enable row level security;
 alter table public.lobbies enable row level security;
 alter table public.lobby_memberships enable row level security;
 alter table public.friend_requests enable row level security;
 alter table public.lobby_ratings enable row level security;
+alter table public.notifications enable row level security;
 
 drop policy if exists "profiles are readable by everyone" on public.profiles;
 create policy "profiles are readable by everyone"
@@ -320,6 +335,13 @@ alter table public.lobbies add column if not exists field_type text check (field
 alter table public.lobbies add column if not exists gender_restriction text not null default 'none' check (gender_restriction in ('none', 'male', 'female'));
 alter table public.lobbies add column if not exists latitude double precision;
 alter table public.lobbies add column if not exists longitude double precision;
+alter table public.lobbies add column if not exists status text not null default 'active';
+alter table public.lobbies drop constraint if exists lobbies_status_check;
+alter table public.lobbies add constraint lobbies_status_check check (status in ('active', 'deleted'));
+alter table public.notifications drop constraint if exists notifications_kind_check;
+alter table public.notifications add constraint notifications_kind_check check (
+  kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'organizer_summary')
+);
 
 -- Contribution icons (ball/speaker) per lobby
 create table if not exists public.lobby_contributions (
@@ -377,5 +399,138 @@ using (
     from public.profiles p
     where p.auth_user_id = auth.uid()
       and p.id in (rater_profile_id, rated_profile_id)
+  )
+);
+
+drop policy if exists "users can read their own notifications" on public.notifications;
+create policy "users can read their own notifications"
+on public.notifications
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = profile_id
+      and p.auth_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "users can update their own notifications" on public.notifications;
+create policy "users can update their own notifications"
+on public.notifications
+for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = profile_id
+      and p.auth_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = profile_id
+      and p.auth_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "users can delete their own notifications" on public.notifications;
+create policy "users can delete their own notifications"
+on public.notifications
+for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles p
+    where p.id = profile_id
+      and p.auth_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "authenticated users can create notifications" on public.notifications;
+create policy "authenticated users can create notifications"
+on public.notifications
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles actor
+    where actor.id = actor_profile_id
+      and actor.auth_user_id = auth.uid()
+  )
+  and (
+    (
+      kind = 'friend_request'
+      and exists (
+        select 1
+        from public.friend_requests fr
+        where fr.from_profile_id = actor_profile_id
+          and fr.to_profile_id = profile_id
+          and fr.status = 'pending'
+      )
+    )
+    or (
+      kind = 'friend_request_accepted'
+      and exists (
+        select 1
+        from public.friend_requests fr
+        where fr.from_profile_id = profile_id
+          and fr.to_profile_id = actor_profile_id
+          and fr.status = 'accepted'
+      )
+    )
+    or (
+      kind = 'friend_request_declined'
+      and exists (
+        select 1
+        from public.friend_requests fr
+        where fr.from_profile_id = profile_id
+          and fr.to_profile_id = actor_profile_id
+          and fr.status = 'declined'
+      )
+    )
+    or (
+      kind = 'friend_joined_lobby'
+      and lobby_id is not null
+      and profile_id <> actor_profile_id
+      and exists (
+        select 1
+        from public.lobby_memberships lm
+        where lm.lobby_id = lobby_id
+          and lm.profile_id = actor_profile_id
+          and lm.status = 'joined'
+      )
+      and exists (
+        select 1
+        from public.friend_requests fr
+        where fr.status = 'accepted'
+          and (
+            (fr.from_profile_id = actor_profile_id and fr.to_profile_id = profile_id)
+            or (fr.from_profile_id = profile_id and fr.to_profile_id = actor_profile_id)
+          )
+      )
+    )
+    or (
+      kind = 'organizer_summary'
+      and lobby_id is not null
+      and exists (
+        select 1
+        from public.lobbies l
+        where l.id = lobby_id
+          and l.created_by = profile_id
+      )
+      and exists (
+        select 1
+        from public.lobby_memberships lm
+        where lm.lobby_id = lobby_id
+          and lm.profile_id = actor_profile_id
+      )
+    )
   )
 );

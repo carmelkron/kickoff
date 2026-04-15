@@ -34,6 +34,7 @@ function makeLobby(overrides: Partial<Lobby> = {}): Lobby {
     waitlist: [],
     gameType: 'competitive',
     genderRestriction: 'none',
+    status: 'active',
     ...overrides,
   };
 }

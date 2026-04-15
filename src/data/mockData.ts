@@ -165,7 +165,7 @@ export const mockLobbies: Lobby[] = [
     maxPlayers: 10, numTeams: 2, playersPerTeam: 5,
     minRating: 5.0, isPrivate: false, price: 20,
     description: 'משחק שבועי קבוע! אנשים נחמדים. מגיעים 10 דק לפני.',
-    createdBy: 'p1', distanceKm: 1.2, waitlist: [], gameType: 'competitive', genderRestriction: 'none',
+    createdBy: 'p1', distanceKm: 1.2, waitlist: [], gameType: 'competitive', genderRestriction: 'none', status: 'active',
   },
   {
     id: 'l2', title: 'חמישה על חמישה – חיפה',
@@ -175,7 +175,7 @@ export const mockLobbies: Lobby[] = [
     maxPlayers: 10, numTeams: 2, playersPerTeam: 5,
     minRating: 7.0, isPrivate: false, price: 30,
     description: 'מחפשים שחקנים ברמה גבוהה. מינימום דירוג 7.',
-    createdBy: 'p3', distanceKm: 2.7, waitlist: [], gameType: 'competitive', genderRestriction: 'none',
+    createdBy: 'p3', distanceKm: 2.7, waitlist: [], gameType: 'competitive', genderRestriction: 'none', status: 'active',
   },
   {
     id: 'l3', title: 'משחק בוקר לכל',
@@ -185,7 +185,7 @@ export const mockLobbies: Lobby[] = [
     maxPlayers: 14, numTeams: 2, playersPerTeam: 7,
     minRating: undefined, isPrivate: false, price: 0,
     description: 'משחק כיף לכולם! לא חשוב הרמה, עיקר הכיף.',
-    createdBy: 'p4', distanceKm: 0.8, waitlist: [], gameType: 'friendly', genderRestriction: 'none',
+    createdBy: 'p4', distanceKm: 0.8, waitlist: [], gameType: 'friendly', genderRestriction: 'none', status: 'active',
   },
   {
     id: 'l4', title: 'סופ"ש 7 על 7',
@@ -195,7 +195,7 @@ export const mockLobbies: Lobby[] = [
     maxPlayers: 14, numTeams: 2, playersPerTeam: 7,
     minRating: 4.0, isPrivate: false, price: 15,
     description: 'משחק מעורב לסוף שבוע. מקום לעוד 7 שחקנים!',
-    createdBy: 'p6', distanceKm: 3.4, waitlist: [], gameType: 'competitive', genderRestriction: 'none',
+    createdBy: 'p6', distanceKm: 3.4, waitlist: [], gameType: 'competitive', genderRestriction: 'none', status: 'active',
   },
   {
     id: 'l5', title: 'נוקטורנל – נתניה',
@@ -205,7 +205,7 @@ export const mockLobbies: Lobby[] = [
     maxPlayers: 10, numTeams: 2, playersPerTeam: 5,
     minRating: 5.0, isPrivate: false, price: 25,
     description: 'משחק לילי על מגרש מוגש ליד הים. אווירה מיוחדת!',
-    createdBy: 'p2', distanceKm: 5.1, waitlist: [], gameType: 'friendly', genderRestriction: 'none',
+    createdBy: 'p2', distanceKm: 5.1, waitlist: [], gameType: 'friendly', genderRestriction: 'none', status: 'active',
   },
   {
     id: 'l6', title: 'אליפות השכונה 🏆',
@@ -215,7 +215,7 @@ export const mockLobbies: Lobby[] = [
     maxPlayers: 10, numTeams: 2, playersPerTeam: 5,
     minRating: 6.0, isPrivate: false, price: 20,
     description: 'תחרות שכונתית לא רשמית. מגיעים בזמן!',
-    createdBy: 'p6', distanceKm: 4.2, waitlist: [], gameType: 'competitive', genderRestriction: 'none',
+    createdBy: 'p6', distanceKm: 4.2, waitlist: [], gameType: 'competitive', genderRestriction: 'none', status: 'active',
   },
   {
     id: 'l7', title: 'כדורגל נשים',
@@ -225,7 +225,7 @@ export const mockLobbies: Lobby[] = [
     maxPlayers: 10, numTeams: 2, playersPerTeam: 5,
     minRating: undefined, isPrivate: false, price: 0,
     description: 'קבוצת נשים ובנות. רמה מתחילה–בינונית. כולן מוזמנות!',
-    createdBy: 'p8', distanceKm: 7.8, waitlist: [], gameType: 'friendly', genderRestriction: 'none',
+    createdBy: 'p8', distanceKm: 7.8, waitlist: [], gameType: 'friendly', genderRestriction: 'none', status: 'active',
   },
   {
     // l8 is FULL (maxPlayers=6, has 6 players) — demonstrates the waitlist feature
@@ -237,6 +237,6 @@ export const mockLobbies: Lobby[] = [
     minRating: 7.5, isPrivate: true, price: 40,
     description: 'קבוצה של חברים קבועים. מחפשים שחקן שישלים.',
     createdBy: 'p3', distanceKm: 6.3,
-    waitlist: [mockPlayers[3], mockPlayers[8]], gameType: 'competitive', genderRestriction: 'none',
+    waitlist: [mockPlayers[3], mockPlayers[8]], gameType: 'competitive', genderRestriction: 'none', status: 'active',
   },
 ];
