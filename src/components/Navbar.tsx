@@ -4,6 +4,7 @@ import { Bell, Check, LogOut, User, UserCheck, UserX } from 'lucide-react';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead, type AppNotification } from '../lib/appNotifications';
+import { requireSupabase } from '../lib/supabase';
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ export default function Navbar() {
       return;
     }
 
+    const supabase = requireSupabase();
     const currentUserId = currentUser.id;
     let cancelled = false;
 
@@ -58,12 +60,45 @@ export default function Navbar() {
     const intervalId = window.setInterval(() => {
       void loadNotifications(false);
     }, 60000);
+    const channel = supabase
+      .channel(`notifications:${currentUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `profile_id=eq.${currentUserId}`,
+        },
+        () => {
+          void loadNotifications(false);
+        },
+      )
+      .subscribe();
+
+    function handleWindowFocus() {
+      void loadNotifications(false);
+    }
+
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleWindowFocus);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleWindowFocus);
+      void supabase.removeChannel(channel);
     };
   }, [currentUser, lang]);
+
+  useEffect(() => {
+    if (!notificationsOpen) {
+      return;
+    }
+
+    void refreshNotifications();
+  }, [notificationsOpen]);
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
