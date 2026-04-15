@@ -14,6 +14,8 @@ export const translations = {
       noNotifications: 'אין התראות כרגע',
       markAllRead: 'סמן הכל כנקרא',
       loadingNotifications: 'טוען התראות...',
+      requestAccepted: 'בקשת החברות אושרה',
+      requestDeclined: 'בקשת החברות נדחתה',
     },
     home: {
       title: 'משחקים קרובים אליך',
@@ -105,6 +107,8 @@ export const translations = {
       noNotifications: 'No notifications right now',
       markAllRead: 'Mark all as read',
       loadingNotifications: 'Loading notifications...',
+      requestAccepted: 'Friend request accepted',
+      requestDeclined: 'Friend request declined',
     },
     home: {
       title: 'Games Near You',

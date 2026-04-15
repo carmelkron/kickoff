@@ -16,6 +16,7 @@ export default function Navbar() {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [notificationActionError, setNotificationActionError] = useState('');
   const [busyNotificationId, setBusyNotificationId] = useState('');
+  const [handledRequestActions, setHandledRequestActions] = useState<Record<string, 'accept' | 'decline'>>({});
   const notificationRef = useRef<HTMLDivElement | null>(null);
 
   const isActive = (path: string) => location.pathname === path;
@@ -29,6 +30,7 @@ export default function Navbar() {
   useEffect(() => {
     if (!currentUser) {
       setNotifications([]);
+      setHandledRequestActions({});
       return;
     }
 
@@ -169,6 +171,10 @@ export default function Navbar() {
       } else {
         await declineFriendRequest(notification.requesterId);
       }
+      setHandledRequestActions((current) => ({
+        ...current,
+        [notification.id]: action,
+      }));
       await refreshNotifications();
     } catch (error) {
       setNotificationActionError(error instanceof Error ? error.message : 'Action failed');
@@ -256,6 +262,7 @@ export default function Navbar() {
                         <p className="px-4 py-6 text-sm text-gray-400 text-center">{t.nav.noNotifications}</p>
                       ) : (
                         notifications.map((notification) => {
+                          const handledAction = handledRequestActions[notification.id];
                           return (
                             <div
                               key={notification.id}
@@ -277,7 +284,7 @@ export default function Navbar() {
                                 </div>
                               </button>
 
-                              {notification.kind === 'friend_request' && notification.requesterId && (
+                              {notification.kind === 'friend_request' && notification.requesterId && !handledAction && (
                                 <div className="mt-3 ms-5 flex items-center gap-2">
                                   <button
                                     onClick={() => void handleNotificationFriendRequest('accept', notification)}
@@ -295,6 +302,21 @@ export default function Navbar() {
                                     <UserX size={13} />
                                     {lang === 'he' ? 'דחה' : 'Decline'}
                                   </button>
+                                </div>
+                              )}
+
+                              {notification.kind === 'friend_request' && handledAction && (
+                                <div className="mt-3 ms-5">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg ${
+                                      handledAction === 'accept'
+                                        ? 'bg-green-50 text-green-700 border border-green-200'
+                                        : 'bg-gray-50 text-gray-600 border border-gray-200'
+                                    }`}
+                                  >
+                                    <Check size={13} />
+                                    {handledAction === 'accept' ? t.nav.requestAccepted : t.nav.requestDeclined}
+                                  </span>
                                 </div>
                               )}
                             </div>
