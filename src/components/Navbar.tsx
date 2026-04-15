@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Bell, Check, LogOut, User, UserCheck, UserX } from 'lucide-react';
+import { Bell, Check, LogOut, Trash2, User, UserCheck, UserX } from 'lucide-react';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { fetchNotifications, markAllNotificationsRead, markNotificationRead, type AppNotification } from '../lib/appNotifications';
+import {
+  deleteAllNotifications,
+  deleteNotification,
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type AppNotification,
+} from '../lib/appNotifications';
 import { requireSupabase } from '../lib/supabase';
 
 export default function Navbar() {
@@ -16,6 +23,8 @@ export default function Navbar() {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [notificationActionError, setNotificationActionError] = useState('');
   const [busyNotificationId, setBusyNotificationId] = useState('');
+  const [deletingNotificationId, setDeletingNotificationId] = useState('');
+  const [clearingNotifications, setClearingNotifications] = useState(false);
   const [handledRequestActions, setHandledRequestActions] = useState<Record<string, 'accept' | 'decline'>>({});
   const notificationRef = useRef<HTMLDivElement | null>(null);
 
@@ -140,6 +149,42 @@ export default function Navbar() {
     await refreshNotifications();
   }
 
+  async function handleDeleteNotification(notificationId: string) {
+    setDeletingNotificationId(notificationId);
+    setNotificationActionError('');
+    try {
+      await deleteNotification(notificationId);
+      setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
+      setHandledRequestActions((current) => {
+        const next = { ...current };
+        delete next[notificationId];
+        return next;
+      });
+    } catch (error) {
+      setNotificationActionError(error instanceof Error ? error.message : 'Delete failed');
+    } finally {
+      setDeletingNotificationId('');
+    }
+  }
+
+  async function handleClearAllNotifications() {
+    if (!currentUser) {
+      return;
+    }
+
+    setClearingNotifications(true);
+    setNotificationActionError('');
+    try {
+      await deleteAllNotifications(currentUser.id);
+      setNotifications([]);
+      setHandledRequestActions({});
+    } catch (error) {
+      setNotificationActionError(error instanceof Error ? error.message : 'Delete failed');
+    } finally {
+      setClearingNotifications(false);
+    }
+  }
+
   async function openNotification(notification: AppNotification) {
     if (!notification.isRead) {
       await markNotificationRead(notification.id);
@@ -242,12 +287,21 @@ export default function Navbar() {
                         )}
                       </div>
                       {notifications.length > 0 && (
-                        <button
-                          onClick={() => void handleMarkAllRead()}
-                          className="text-xs text-primary-600 hover:underline"
-                        >
-                          {t.nav.markAllRead}
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => void handleMarkAllRead()}
+                            className="text-xs text-primary-600 hover:underline"
+                          >
+                            {t.nav.markAllRead}
+                          </button>
+                          <button
+                            onClick={() => void handleClearAllNotifications()}
+                            disabled={clearingNotifications}
+                            className="text-xs text-red-500 hover:underline disabled:opacity-60"
+                          >
+                            {t.nav.clearAllNotifications}
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -268,21 +322,36 @@ export default function Navbar() {
                               key={notification.id}
                               className={`px-4 py-3 border-b border-gray-100 last:border-b-0 ${notification.isRead ? 'bg-white' : 'bg-primary-50/60'}`}
                             >
-                              <button
-                                onClick={() => void openNotification(notification)}
-                                className="w-full text-start"
-                              >
-                                <div className="flex items-start gap-3">
-                                  <span className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${notification.isRead ? 'bg-gray-200' : 'bg-primary-600'}`} />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className="text-sm font-semibold text-gray-900">{notification.title}</p>
-                                      {notification.isRead && <Check size={14} className="text-gray-300 shrink-0" />}
+                              <div className="flex items-start gap-2">
+                                <button
+                                  onClick={() => void openNotification(notification)}
+                                  className="min-w-0 flex-1 text-start"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <span className={`mt-1 h-2.5 w-2.5 rounded-full shrink-0 ${notification.isRead ? 'bg-gray-200' : 'bg-primary-600'}`} />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <p className="text-sm font-semibold text-gray-900">{notification.title}</p>
+                                        {notification.isRead && <Check size={14} className="text-gray-300 shrink-0" />}
+                                      </div>
+                                      <p className="mt-1 text-sm text-gray-600">{notification.message}</p>
                                     </div>
-                                    <p className="mt-1 text-sm text-gray-600">{notification.message}</p>
                                   </div>
-                                </div>
-                              </button>
+                                </button>
+                                <button
+                                  type="button"
+                                  title={t.nav.deleteNotification}
+                                  aria-label={t.nav.deleteNotification}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleDeleteNotification(notification.id);
+                                  }}
+                                  disabled={deletingNotificationId === notification.id}
+                                  className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-500 disabled:opacity-60"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
 
                               {notification.kind === 'friend_request' && notification.requesterId && !handledAction && (
                                 <div className="mt-3 ms-5 flex items-center gap-2">

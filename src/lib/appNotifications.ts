@@ -212,6 +212,30 @@ export async function markAllNotificationsRead(profileId: string) {
   }
 }
 
+export async function deleteNotification(notificationId: string) {
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('id', notificationId);
+
+  if (error && !isMissingNotificationsTableError(error)) {
+    throw error;
+  }
+}
+
+export async function deleteAllNotifications(profileId: string) {
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('profile_id', profileId);
+
+  if (error && !isMissingNotificationsTableError(error)) {
+    throw error;
+  }
+}
+
 export async function markFriendRequestNotificationsHandled(requesterId: string, recipientId: string) {
   const supabase = requireSupabase();
   const { error } = await supabase
