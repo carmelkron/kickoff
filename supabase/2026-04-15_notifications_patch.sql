@@ -3,7 +3,7 @@ create table if not exists public.notifications (
   profile_id text not null references public.profiles (id) on delete cascade,
   actor_profile_id text references public.profiles (id) on delete cascade,
   lobby_id text references public.lobbies (id) on delete cascade,
-  kind text not null check (kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'team_assigned', 'organizer_summary')),
+  kind text not null check (kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'competitive_result', 'team_assigned', 'organizer_summary')),
   data jsonb not null default '{}'::jsonb,
   is_read boolean not null default false,
   created_at timestamptz not null default now()
@@ -11,7 +11,7 @@ create table if not exists public.notifications (
 
 alter table public.notifications drop constraint if exists notifications_kind_check;
 alter table public.notifications add constraint notifications_kind_check check (
-  kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'team_assigned', 'organizer_summary')
+  kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'competitive_result', 'team_assigned', 'organizer_summary')
 );
 
 create index if not exists notifications_profile_id_created_at_idx on public.notifications (profile_id, created_at desc);
@@ -131,6 +131,23 @@ with check (
             (fr.from_profile_id = actor_profile_id and fr.to_profile_id = profile_id)
             or (fr.from_profile_id = profile_id and fr.to_profile_id = actor_profile_id)
           )
+      )
+    )
+    or (
+      kind = 'competitive_result'
+      and lobby_id is not null
+      and exists (
+        select 1
+        from public.lobbies l
+        where l.id = lobby_id
+          and l.created_by = actor_profile_id
+      )
+      and exists (
+        select 1
+        from public.lobby_memberships lm
+        where lm.lobby_id = lobby_id
+          and lm.profile_id = profile_id
+          and lm.status = 'joined'
       )
     )
     or (

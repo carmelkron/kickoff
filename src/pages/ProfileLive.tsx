@@ -396,7 +396,12 @@ export default function ProfileLive() {
           ) : competitiveHistory.length > 0 ? (
             <div className="space-y-3">
               {competitiveHistory.map((entry) => (
-                <div key={entry.id} className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => navigate(`/lobby/${entry.lobbyId}`)}
+                  className="w-full rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-start transition-colors hover:bg-gray-100"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
                       <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50">
@@ -433,7 +438,7 @@ export default function ProfileLive() {
                       <p className="text-xs text-gray-400">{lang === 'he' ? 'נקודות' : 'points'}</p>
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -482,7 +487,12 @@ export default function ProfileLive() {
           <h2 className="font-semibold text-gray-900 mb-4">{lang === 'he' ? 'היסטוריית דירוג' : 'Rating History'}</h2>
           <div className="space-y-2">
             {profile.ratingHistory.map((entry, index) => (
-              <div key={`${entry.lobbyId}-${index}`} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+              <button
+                key={`${entry.lobbyId}-${index}`}
+                type="button"
+                onClick={() => navigate(`/lobby/${entry.lobbyId}`)}
+                className="flex w-full items-center gap-3 rounded-xl border-b border-gray-50 py-2 text-start transition-colors hover:bg-gray-50 last:border-0"
+              >
                 <div className="shrink-0">
                   {entry.change > 0 ? <TrendingUp size={15} className="text-green-500" /> : entry.change < 0 ? <TrendingDown size={15} className="text-red-500" /> : <Minus size={15} className="text-gray-400" />}
                 </div>
@@ -497,7 +507,7 @@ export default function ProfileLive() {
                   </span>
                   <p className="text-xs text-gray-400">★ {entry.rating.toFixed(1)}</p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -508,7 +518,12 @@ export default function ProfileLive() {
           <h2 className="font-semibold text-gray-900 mb-4">{lang === 'he' ? 'משחקים אחרונים' : 'Recent Games'}</h2>
           <div className="space-y-3">
             {profile.lobbyHistory.map((entry, index) => (
-              <div key={`${entry.lobbyId}-${index}`} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+              <button
+                key={`${entry.lobbyId}-${index}`}
+                type="button"
+                onClick={() => navigate(`/lobby/${entry.lobbyId}`)}
+                className="flex w-full items-center gap-3 rounded-xl border-b border-gray-50 py-2 text-start transition-colors hover:bg-gray-50 last:border-0"
+              >
                 <div className="w-9 h-9 bg-primary-50 rounded-xl flex items-center justify-center shrink-0">
                   <MapPin size={15} className="text-primary-500" />
                 </div>
@@ -523,7 +538,7 @@ export default function ProfileLive() {
                     {entry.ratingChange.toFixed(1)} ★
                   </span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>

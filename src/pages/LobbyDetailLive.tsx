@@ -218,6 +218,14 @@ export default function LobbyDetailLive() {
     }
     return 'none';
   })();
+  const myTeamAssignment =
+    currentUser
+      ? teams.find((assignment) => assignment.players.some((player) => player.id === currentUser.id)) ?? null
+      : null;
+  const myTeamResult =
+    myTeamAssignment && lobbyResult
+      ? lobbyResult.teamResults.find((teamResult) => teamResult.lobbyTeamId === myTeamAssignment.team.id) ?? null
+      : null;
 
   async function runMembershipAction(action: () => Promise<void>) {
     setSaving(true);
@@ -706,6 +714,29 @@ export default function LobbyDetailLive() {
           <h2 className="font-semibold text-gray-900 mb-4">
             {lang === 'he' ? 'תוצאות ונקודות' : 'Results and points'}
           </h2>
+          {myTeamAssignment && myTeamResult && (
+            <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">
+                    {lang === 'he' ? 'הסיכום האישי שלכם' : 'Your summary'}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                    {lang === 'he'
+                      ? `שיחקתם בקבוצה ${getTeamColorLabel(myTeamAssignment.team.color, lang)}`
+                      : `You played on the ${getTeamColorLabel(myTeamAssignment.team.color, lang)} team`}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-600">
+                    {formatRankLabel(myTeamResult.rank, lang)} • {myTeamResult.wins} {lang === 'he' ? 'ניצחונות' : 'wins'}
+                  </p>
+                </div>
+                <div className="text-end">
+                  <p className="text-lg font-bold text-primary-700">+{myTeamResult.awardedPoints}</p>
+                  <p className="text-xs text-primary-600">{lang === 'he' ? 'נקודות שקיבלתם' : 'points earned'}</p>
+                </div>
+              </div>
+            </div>
+          )}
           {lobbyResult.notes && (
             <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
               <p className="text-xs font-semibold text-amber-800">

@@ -1,5 +1,5 @@
 import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry } from '../types';
-import { createFriendJoinedLobbyNotifications, createOrganizerSummaryNotification, createTeamAssignedNotifications, fetchAcceptedFriendIds } from './appNotifications';
+import { createCompetitiveResultNotifications, createFriendJoinedLobbyNotifications, createOrganizerSummaryNotification, createTeamAssignedNotifications, fetchAcceptedFriendIds } from './appNotifications';
 import { requireSupabase } from './supabase';
 import { getJoinLobbyError, normalizeText, validateCreateLobbyPayload } from './validation';
 import { calculateCompetitiveStandings } from './competitiveResults';
@@ -820,6 +820,20 @@ export async function submitCompetitiveLobbyResult(
       reason: 'competitive_lobby_result',
     }));
   });
+  const resultNotifications = teamAssignments.flatMap((assignment) => {
+    const standing = standingByTeamId.get(assignment.team.id);
+    if (!standing) {
+      throw new Error('Failed to map standings to teams.');
+    }
+
+    return assignment.players.map((player) => ({
+      profileId: player.id,
+      teamColor: standing.color,
+      wins: standing.wins,
+      rank: standing.rank,
+      points: standing.awardedPoints,
+    }));
+  });
 
   const { error: pointEventsError } = await supabase.from('competitive_point_events').insert(pointEvents);
   if (pointEventsError) {
@@ -864,6 +878,8 @@ export async function submitCompetitiveLobbyResult(
       }),
     );
   }
+
+  await createCompetitiveResultNotifications(submittedByProfileId, lobby, resultNotifications);
 
   const nextResult = await fetchLobbyResult(lobbyId);
   if (!nextResult) {

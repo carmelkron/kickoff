@@ -7,6 +7,7 @@ type NotificationKind =
   | 'friend_request_accepted'
   | 'friend_request_declined'
   | 'friend_joined_lobby'
+  | 'competitive_result'
   | 'team_assigned'
   | 'organizer_summary';
 
@@ -141,6 +142,39 @@ function mapNotification(row: NotificationRow, lang: Language): AppNotification 
       message: lobbyTitle
         ? (isHebrew ? `ההרכבים ל-${lobbyTitle} נקבעו. לחצו כדי לראות את הקבוצות.` : `The lineups for ${lobbyTitle} are ready. Tap to view the teams.`)
         : (isHebrew ? 'ההרכבים נקבעו. לחצו כדי לראות את הקבוצות.' : 'The lineups are ready. Tap to view the teams.'),
+      isRead: row.is_read,
+      createdAt: row.created_at,
+      lobbyId: row.lobby_id ?? undefined,
+    };
+  }
+
+  if (row.kind === 'competitive_result') {
+    const teamColor = readString(row.data, 'teamColor') as TeamColor;
+    const lobbyTitle = readString(row.data, 'lobbyTitle');
+    const wins = readNumber(row.data, 'wins');
+    const rank = readNumber(row.data, 'rank');
+    const points = readNumber(row.data, 'points');
+    const colorLabel = getTeamColorLabel(teamColor, lang);
+    const rankLabel =
+      rank === Math.trunc(rank)
+        ? (isHebrew ? `מקום ${rank}` : `place ${rank}`)
+        : (isHebrew ? `מקום ${rank.toFixed(1)}` : `place ${rank.toFixed(1)}`);
+
+    return {
+      id: row.id,
+      kind: row.kind,
+      title: isHebrew ? 'תוצאות הלובי פורסמו' : 'Lobby result was published',
+      message: lobbyTitle
+        ? (
+          isHebrew
+            ? `${lobbyTitle}: הקבוצה ה${colorLabel} סיימה ב${rankLabel}, עם ${wins} ניצחונות, וקיבלתם ${points} נקודות.`
+            : `${lobbyTitle}: the ${colorLabel} team finished in ${rankLabel}, with ${wins} wins, and you earned ${points} points.`
+        )
+        : (
+          isHebrew
+            ? `תוצאות הלובי פורסמו. קיבלתם ${points} נקודות.`
+            : `The lobby result was published. You earned ${points} points.`
+        ),
       isRead: row.is_read,
       createdAt: row.created_at,
       lobbyId: row.lobby_id ?? undefined,
@@ -371,6 +405,34 @@ export async function createTeamAssignedNotifications(
       data: {
         lobbyTitle: lobby.title,
         teamColor: assignment.teamColor,
+      },
+    })),
+  );
+}
+
+export async function createCompetitiveResultNotifications(
+  actorId: string,
+  lobby: Lobby,
+  assignments: Array<{
+    profileId: string;
+    teamColor: TeamColor;
+    wins: number;
+    rank: number;
+    points: number;
+  }>,
+) {
+  await insertNotifications(
+    assignments.map((assignment) => ({
+      profile_id: assignment.profileId,
+      actor_profile_id: actorId,
+      lobby_id: lobby.id,
+      kind: 'competitive_result' as const,
+      data: {
+        lobbyTitle: lobby.title,
+        teamColor: assignment.teamColor,
+        wins: assignment.wins,
+        rank: assignment.rank,
+        points: assignment.points,
       },
     })),
   );
