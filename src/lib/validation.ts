@@ -21,6 +21,7 @@ export type CreateLobbyDraft = {
   time: string;
   numTeams: number;
   playersPerTeam: number;
+  accessType?: 'open' | 'locked';
   minRating?: number;
   price?: number;
   description?: string;
@@ -33,6 +34,7 @@ export type CreateLobbyPayload = {
   datetime: string;
   numTeams: number;
   playersPerTeam: number;
+  accessType?: 'open' | 'locked';
   minRating?: number;
   price?: number;
   description?: string;

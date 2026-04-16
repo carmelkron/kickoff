@@ -3,9 +3,9 @@ import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, Lock, MapPin,
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
+import { createLobbyInvite, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
 import { getJoinLobbyError } from '../lib/validation';
-import type { ContributionType, Lobby, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
+import type { ContributionType, Lobby, LobbyInvite, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
 import { formatDateTime } from '../utils/format';
 import { getDistanceSourceText, loadSessionDistancePreference } from '../utils/distanceSource';
 import { haversineKm } from '../utils/geo';
@@ -49,13 +49,14 @@ export default function LobbyDetailLive() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t, lang } = useLang();
-  const { currentUser } = useAuth();
+  const { currentUser, getAllUsers } = useAuth();
   const [lobby, setLobby] = useState<Lobby | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [contributions, setContributions] = useState<{ profileId: string; type: ContributionType }[]>([]);
+  const [invites, setInvites] = useState<LobbyInvite[]>([]);
   const [teams, setTeams] = useState<LobbyTeamAssignment[]>([]);
   const [distancePreference, setDistancePreference] = useState(() => loadSessionDistancePreference());
   const [generatingTeams, setGeneratingTeams] = useState(false);
@@ -67,6 +68,7 @@ export default function LobbyDetailLive() {
   const [resultNotes, setResultNotes] = useState('');
   const [submittingResult, setSubmittingResult] = useState(false);
   const [resultModalDismissed, setResultModalDismissed] = useState(false);
+  const [invitingProfileId, setInvitingProfileId] = useState('');
 
   async function loadLobby() {
     if (!id) {
@@ -84,8 +86,13 @@ export default function LobbyDetailLive() {
         fetchLobbyTeams(id),
         fetchLobbyResult(id),
       ]);
+      const nextInvites =
+        nextLobby && currentUser?.id === nextLobby.createdBy
+          ? await fetchLobbyInvites(id)
+          : [];
       setLobby(nextLobby);
       setContributions(nextContributions);
+      setInvites(nextLobby?.accessType === 'locked' ? nextInvites : []);
       setTeams(nextTeams);
       setLobbyResult(nextResult);
       setResultNotes(nextResult?.notes ?? '');
@@ -99,7 +106,7 @@ export default function LobbyDetailLive() {
 
   useEffect(() => {
     void loadLobby();
-  }, [id]);
+  }, [id, currentUser?.id]);
 
   useEffect(() => {
     setDistancePreference(loadSessionDistancePreference());
@@ -152,6 +159,7 @@ export default function LobbyDetailLive() {
 
   const resolvedLobby = lobby;
   const lobbyId = resolvedLobby.id;
+  const allUsers = getAllUsers();
 
   const isFull = resolvedLobby.players.length >= resolvedLobby.maxPlayers;
   const dateStr = formatDateTime(resolvedLobby.datetime, lang, t.common.today, t.common.tomorrow);
@@ -204,6 +212,18 @@ export default function LobbyDetailLive() {
       : [];
   const myWaitlistIndex = currentUser ? resolvedLobby.waitlist.findIndex((player) => player.id === currentUser.id) : -1;
   const isFirstWaitlisted = myWaitlistIndex === 0;
+  const inviteCandidateIds = new Set(invites.map((invite) => invite.invitedProfileId));
+  const inviteCandidates =
+    currentUser
+      ? currentUser.friends
+          .flatMap((friendId) => {
+            const user = allUsers.find((candidate) => candidate.id === friendId);
+            return user ? [user] : [];
+          })
+          .filter((user) => !resolvedLobby.players.some((player) => player.id === user.id))
+          .filter((user) => !resolvedLobby.waitlist.some((player) => player.id === user.id))
+          .filter((user) => !inviteCandidateIds.has(user.id))
+      : [];
 
   const myStatus: MyStatus = (() => {
     if (!currentUser) {
@@ -321,6 +341,24 @@ export default function LobbyDetailLive() {
       setError(nextError instanceof Error ? nextError.message : 'Failed to generate teams');
     } finally {
       setGeneratingTeams(false);
+    }
+  }
+
+  async function handleInvitePlayer(profileId: string) {
+    if (!currentUser) {
+      return;
+    }
+
+    setInvitingProfileId(profileId);
+    setError('');
+    try {
+      await createLobbyInvite(lobbyId, currentUser.id, profileId);
+      const nextInvites = await fetchLobbyInvites(lobbyId);
+      setInvites(nextInvites);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Failed to send invite');
+    } finally {
+      setInvitingProfileId('');
     }
   }
 
@@ -443,6 +481,33 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
+      {resolvedLobby.accessType === 'locked' && (
+        <div className="mb-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-gray-900 p-2 text-white">
+              <Lock size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-gray-900">
+                {lang === 'he' ? 'לובי נעול' : 'Locked lobby'}
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                {lang === 'he'
+                  ? 'רק משתתפים, מוזמנים, או חברים של מי שכבר בפנים יכולים להיכנס ללובי הזה.'
+                  : 'Only participants, invited players, or friends of players already inside can access this lobby.'}
+              </p>
+              {(resolvedLobby.viewerIsInvited || resolvedLobby.viewerHasFriendInside) && (
+                <p className="mt-2 text-xs font-medium text-primary-700">
+                  {resolvedLobby.viewerIsInvited
+                    ? (lang === 'he' ? 'יש לכם הזמנה פעילה ללובי הזה.' : 'You have an active invitation to this lobby.')
+                    : (lang === 'he' ? 'יש לכם חבר/ה שכבר בפנים, ולכן הלובי פתוח עבורכם.' : 'A friend of yours is already inside, so this lobby is available to you.')}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {isCreator && (
         <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -467,6 +532,87 @@ export default function LobbyDetailLive() {
                 ? (lang === 'he' ? 'יוצר הרכבים...' : 'Creating teams...')
                 : (lang === 'he' ? 'צור הרכבים' : 'Create teams')}
             </button>
+          </div>
+        </div>
+      )}
+
+      {isCreator && resolvedLobby.accessType === 'locked' && (
+        <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">
+                {lang === 'he' ? 'הזמנת חברים ללובי' : 'Invite friends to this lobby'}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {lang === 'he'
+                  ? 'מוזמנים יקבלו התראה ויוכלו לפתוח את הלובי גם אם הוא נעול.'
+                  : 'Invited players will get a notification and will be able to open this locked lobby.'}
+              </p>
+            </div>
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+              {lang === 'he' ? `${invites.length} מוזמנים` : `${invites.length} invited`}
+            </span>
+          </div>
+
+          {invites.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {invites.map((invite) => (
+                <div key={invite.id} className="flex items-center gap-3 rounded-2xl bg-gray-50 px-3 py-2">
+                  {invite.invitedPlayer.photoUrl ? (
+                    <img src={invite.invitedPlayer.photoUrl} alt={invite.invitedPlayer.name} className="h-9 w-9 rounded-full object-cover" />
+                  ) : (
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-full ${invite.invitedPlayer.avatarColor} text-xs font-bold text-white`}>
+                      {invite.invitedPlayer.initials}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-800">{invite.invitedPlayer.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {invite.status === 'accepted'
+                        ? (lang === 'he' ? 'כבר נכנס ללובי' : 'Already joined from invite')
+                        : (lang === 'he' ? 'הזמנה פעילה' : 'Invitation pending')}
+                    </p>
+                  </div>
+                  <span className="text-xs font-semibold text-primary-700">🏆 {invite.invitedPlayer.competitivePoints ?? 0}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-4 space-y-2">
+            {inviteCandidates.length > 0 ? (
+              inviteCandidates.map((player) => (
+                <div key={player.id} className="flex items-center gap-3 rounded-2xl border border-gray-100 px-3 py-2">
+                  {player.photoUrl ? (
+                    <img src={player.photoUrl} alt={player.name} className="h-9 w-9 rounded-full object-cover" />
+                  ) : (
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-full ${player.avatarColor} text-xs font-bold text-white`}>
+                      {player.initials}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-800">{player.name}</p>
+                    {player.position && <p className="text-xs text-gray-400">{player.position}</p>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleInvitePlayer(player.id)}
+                    disabled={invitingProfileId === player.id}
+                    className="rounded-xl bg-primary-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
+                  >
+                    {invitingProfileId === player.id
+                      ? (lang === 'he' ? 'שולח...' : 'Sending...')
+                      : (lang === 'he' ? 'הזמן' : 'Invite')}
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-2xl bg-gray-50 px-3 py-3 text-sm text-gray-500">
+                {lang === 'he'
+                  ? 'אין כרגע חברים פנויים שאפשר להזמין ללובי הזה.'
+                  : 'There are no available friends to invite to this lobby right now.'}
+              </p>
+            )}
           </div>
         </div>
       )}

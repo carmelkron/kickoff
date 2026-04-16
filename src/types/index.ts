@@ -6,7 +6,9 @@ export type GenderRestriction = 'none' | 'male' | 'female';
 export type FieldType = 'grass' | 'asphalt' | 'indoor';
 export type ContributionType = 'ball' | 'speaker';
 export type LobbyStatus = 'active' | 'deleted' | 'expired';
+export type LobbyAccessType = 'open' | 'locked';
 export type TeamColor = 'blue' | 'yellow' | 'red' | 'green';
+export type LobbyInviteStatus = 'pending' | 'accepted' | 'revoked';
 
 export interface RatingEntry {
   date: string;
@@ -61,11 +63,25 @@ export interface Lobby {
   distanceKm: number;
   waitlist: Player[];
   gameType: GameType;
+  accessType: LobbyAccessType;
   fieldType?: FieldType;
   genderRestriction: GenderRestriction;
   latitude?: number;
   longitude?: number;
   status: LobbyStatus;
+  viewerHasAccess: boolean;
+  viewerIsInvited: boolean;
+  viewerHasFriendInside: boolean;
+}
+
+export interface LobbyInvite {
+  id: string;
+  lobbyId: string;
+  invitedProfileId: string;
+  invitedByProfileId: string;
+  status: LobbyInviteStatus;
+  createdAt: string;
+  invitedPlayer: Player;
 }
 
 export interface LobbyTeam {

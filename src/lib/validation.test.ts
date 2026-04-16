@@ -33,8 +33,12 @@ function makeLobby(overrides: Partial<Lobby> = {}): Lobby {
     distanceKm: 1,
     waitlist: [],
     gameType: 'competitive',
+    accessType: 'open',
     genderRestriction: 'none',
     status: 'active',
+    viewerHasAccess: true,
+    viewerIsInvited: false,
+    viewerHasFriendInside: false,
     ...overrides,
   };
 }
@@ -123,7 +127,6 @@ describe('validateCreateLobbyDraft', () => {
         time: '10:00',
         numTeams: 1,
         playersPerTeam: 2,
-        minRating: 11,
         price: -1,
         description: 'x'.repeat(501),
       },
@@ -137,7 +140,6 @@ describe('validateCreateLobbyDraft', () => {
     expect(errors).toContain('Number of teams must be between 2 and 4.');
     expect(errors).toContain('Players per team must be between 3 and 11.');
     expect(errors).toContain('Total max players must be between 6 and 44.');
-    expect(errors).toContain('Minimum rating must be between 1 and 10.');
     expect(errors).toContain('Price must be between 0 and 999.');
     expect(errors).toContain('Description must be 500 characters or fewer.');
   });
@@ -149,13 +151,6 @@ describe('getJoinLobbyError', () => {
     const lobby = makeLobby({ players: [player] });
 
     expect(getJoinLobbyError(lobby, player)).toBe('You are already in this game.');
-  });
-
-  it('blocks low-rated players', () => {
-    const player = makePlayer({ rating: 3.5 });
-    const lobby = makeLobby({ minRating: 4 });
-
-    expect(getJoinLobbyError(lobby, player)).toBe('This game requires a minimum rating of 4.0.');
   });
 
   it('allows waitlist promotion when requested', () => {

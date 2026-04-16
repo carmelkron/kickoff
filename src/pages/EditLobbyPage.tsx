@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useLang } from '../contexts/LanguageContext';
 import { fetchLobbyById, updateLobby } from '../lib/appData';
 import { buildLobbyDateTime } from '../lib/validation';
-import type { FieldType, GameType, GenderRestriction, Lobby } from '../types';
+import type { FieldType, GameType, GenderRestriction, Lobby, LobbyAccessType } from '../types';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
 import { formatLocationLabel } from '../utils/location';
@@ -22,6 +22,7 @@ export default function EditLobbyPage() {
   const [error, setError] = useState('');
 
   const [gameType, setGameType] = useState<GameType>('friendly');
+  const [accessType, setAccessType] = useState<LobbyAccessType>('open');
   const [fieldType, setFieldType] = useState<FieldType | ''>('');
   const [genderRestriction, setGenderRestriction] = useState<GenderRestriction>('none');
   const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
@@ -52,6 +53,7 @@ export default function EditLobbyPage() {
           description: nextLobby.description ?? '',
         });
         setGameType(nextLobby.gameType);
+        setAccessType(nextLobby.accessType);
         setFieldType(nextLobby.fieldType ?? '');
         setGenderRestriction(nextLobby.genderRestriction);
         setSelectedPlace({
@@ -113,6 +115,7 @@ export default function EditLobbyPage() {
         price: form.price ? Number(form.price) : undefined,
         description: form.description || undefined,
         gameType,
+        accessType,
         fieldType: fieldType || undefined,
         genderRestriction,
         latitude: selectedPlace.latitude,
@@ -135,6 +138,37 @@ export default function EditLobbyPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        <Card>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{lang === 'he' ? 'גישה ללובי' : 'Lobby access'}</label>
+            <div className="flex gap-2">
+              {(['open', 'locked'] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setAccessType(type)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
+                    accessType === type
+                      ? type === 'open'
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
+                  }`}
+                >
+                  {type === 'open'
+                    ? (lang === 'he' ? 'פתוח' : 'Open')
+                    : (lang === 'he' ? 'נעול' : 'Locked')}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              {accessType === 'open'
+                ? (lang === 'he' ? 'כל משתמש יכול לפתוח את הלובי ולהצטרף לפי הזמינות.' : 'Anyone can open the lobby and join if space is available.')
+                : (lang === 'he' ? 'רק משתתפים, מוזמנים, או חברים של מי שכבר בפנים יוכלו להיכנס ללובי.' : 'Only participants, invited players, or friends of players already inside can access this lobby.')}
+            </p>
+          </div>
+        </Card>
+
         <Card>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">{lang === 'he' ? 'סוג משחק' : 'Game type'}</label>

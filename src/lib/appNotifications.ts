@@ -7,6 +7,7 @@ type NotificationKind =
   | 'friend_request_accepted'
   | 'friend_request_declined'
   | 'friend_joined_lobby'
+  | 'lobby_invite'
   | 'competitive_result'
   | 'team_assigned'
   | 'organizer_summary';
@@ -128,6 +129,22 @@ function mapNotification(row: NotificationRow, lang: Language): AppNotification 
       createdAt: row.created_at,
       lobbyId: row.lobby_id ?? undefined,
       profileId: row.actor_profile_id ?? undefined,
+    };
+  }
+
+  if (row.kind === 'lobby_invite') {
+    const actorName = readString(row.data, 'actorName');
+    const lobbyTitle = readString(row.data, 'lobbyTitle');
+    return {
+      id: row.id,
+      kind: row.kind,
+      title: isHebrew ? 'הוזמנתם ללובי נעול' : 'You were invited to a locked lobby',
+      message: actorName && lobbyTitle
+        ? (isHebrew ? `${actorName} הזמין אתכם ל-${lobbyTitle}. לחצו כדי לצפות בלובי.` : `${actorName} invited you to ${lobbyTitle}. Tap to open the lobby.`)
+        : (isHebrew ? 'קיבלתם הזמנה ללובי נעול. לחצו כדי לפתוח אותו.' : 'You received an invitation to a locked lobby. Tap to open it.'),
+      isRead: row.is_read,
+      createdAt: row.created_at,
+      lobbyId: row.lobby_id ?? undefined,
     };
   }
 
@@ -368,6 +385,21 @@ export async function createFriendJoinedLobbyNotifications(actorId: string, acto
     }));
 
   await insertNotifications(rows);
+}
+
+export async function createLobbyInviteNotification(actorId: string, actorName: string, recipientId: string, lobby: Lobby) {
+  await insertNotifications([
+    {
+      profile_id: recipientId,
+      actor_profile_id: actorId,
+      lobby_id: lobby.id,
+      kind: 'lobby_invite',
+      data: {
+        actorName,
+        lobbyTitle: lobby.title,
+      },
+    },
+  ]);
 }
 
 export async function createOrganizerSummaryNotification(actorId: string, lobby: Lobby) {

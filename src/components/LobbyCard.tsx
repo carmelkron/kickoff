@@ -37,7 +37,7 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            {lobby.isPrivate && <Lock size={13} className="text-gray-400 shrink-0" />}
+            {(lobby.isPrivate || lobby.accessType === 'locked') && <Lock size={13} className="text-gray-400 shrink-0" />}
             <h3 className="font-semibold text-gray-900 text-base leading-tight truncate">
               {lobby.title}
             </h3>
@@ -55,6 +55,12 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
             {lobby.genderRestriction !== 'none' && (
               <span className="text-xs text-gray-400">
                 {lobby.genderRestriction === 'male' ? '👨' : '👩'}
+              </span>
+            )}
+            {lobby.accessType === 'locked' && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-700">
+                <Lock size={10} />
+                {lang === 'he' ? 'נעול' : 'Locked'}
               </span>
             )}
           </div>
