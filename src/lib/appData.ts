@@ -407,7 +407,9 @@ export async function fetchLobbyTeams(lobbyId: string): Promise<LobbyTeamAssignm
 
   return teams.map((row) => ({
     team: mapLobbyTeam(row),
-    players: [...(membersByTeamId.get(row.id) ?? [])].sort((left, right) => right.rating - left.rating),
+    players: [...(membersByTeamId.get(row.id) ?? [])].sort(
+      (left, right) => (right.competitivePoints ?? 0) - (left.competitivePoints ?? 0),
+    ),
   }));
 }
 

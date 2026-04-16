@@ -10,7 +10,6 @@ import Register from './pages/RegisterPage';
 import Login from './pages/LoginLive';
 import Profile from './pages/ProfileLive';
 import EditProfile from './pages/EditProfilePage';
-import PostGameRating from './pages/PostGameRating';
 
 export default function App() {
   return (
@@ -23,7 +22,6 @@ export default function App() {
               <Route path="/" element={<Home />} />
               <Route path="/lobby/:id" element={<LobbyDetail />} />
               <Route path="/lobby/:id/edit" element={<EditLobby />} />
-              <Route path="/lobby/:id/rate" element={<PostGameRating />} />
               <Route path="/create" element={<CreateLobby />} />
               <Route path="/register" element={<Register />} />
               <Route path="/login" element={<Login />} />

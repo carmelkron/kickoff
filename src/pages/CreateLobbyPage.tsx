@@ -24,7 +24,6 @@ export default function CreateLobbyPage() {
     time: '',
     numTeams: 2,
     playersPerTeam: 5,
-    minRating: '1',
     price: '',
     description: '',
   });
@@ -39,7 +38,7 @@ export default function CreateLobbyPage() {
   const currentUserId = currentUser.id;
   const maxPlayers = form.numTeams * form.playersPerTeam;
 
-  function setField(key: 'title' | 'date' | 'time' | 'minRating' | 'price' | 'description') {
+  function setField(key: 'title' | 'date' | 'time' | 'price' | 'description') {
     return (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setForm((prev) => ({ ...prev, [key]: event.target.value }));
     };
@@ -51,7 +50,6 @@ export default function CreateLobbyPage() {
     setError('');
 
     const numericPrice = form.price ? Number(form.price) : undefined;
-    const minRating = gameType === 'competitive' ? Number(form.minRating) : undefined;
     const address = selectedPlace?.address ?? '';
     const city = selectedPlace?.city ?? '';
     const validationErrors = validateCreateLobbyDraft({
@@ -62,7 +60,6 @@ export default function CreateLobbyPage() {
       time: form.time,
       numTeams: form.numTeams,
       playersPerTeam: form.playersPerTeam,
-      minRating,
       price: numericPrice,
       description: form.description,
     });
@@ -89,7 +86,6 @@ export default function CreateLobbyPage() {
         maxPlayers,
         numTeams: form.numTeams,
         playersPerTeam: form.playersPerTeam,
-        minRating,
         price: numericPrice,
         description: form.description || undefined,
         createdBy: currentUserId,
@@ -146,8 +142,8 @@ export default function CreateLobbyPage() {
             </div>
             <p className="text-xs text-gray-400 mt-2">
               {gameType === 'friendly'
-                ? (lang === 'he' ? 'משחק ידידותי — ללא השפעה על דירוג' : 'Friendly game — no effect on ratings')
-                : (lang === 'he' ? 'משחק תחרותי — שחקנים מדרגים אחד את השני בסיום' : 'Competitive — players rate each other anonymously after the game')}
+                ? (lang === 'he' ? 'משחק ידידותי — ללא חלוקת נקודות תחרות' : 'Friendly game — no competitive points are awarded')
+                : (lang === 'he' ? 'משחק תחרותי — בסיום מחולקות נקודות תחרות לפי תוצאת הקבוצות' : 'Competitive — competitive points are awarded after the result is submitted')}
             </p>
           </div>
         </Card>
@@ -242,19 +238,6 @@ export default function CreateLobbyPage() {
         </Card>
 
         <Card>
-          {gameType === 'competitive' && (
-            <Field label={lang === 'he' ? `דירוג מינימלי: ★ ${Number(form.minRating).toFixed(1)}` : `Min rating: ★ ${Number(form.minRating).toFixed(1)}`}>
-              <input
-                type="range"
-                min="1"
-                max="10"
-                step="0.5"
-                value={form.minRating}
-                onChange={setField('minRating')}
-                className="w-full accent-primary-600 mt-1"
-              />
-            </Field>
-          )}
           <Field label={t.create.price}>
             <Input type="number" min="0" value={form.price} onChange={setField('price')} placeholder={t.create.pricePlaceholder} />
           </Field>

@@ -4,7 +4,6 @@ import { Lobby } from '../types';
 import { useLang } from '../contexts/LanguageContext';
 import { formatDateTime } from '../utils/format';
 import { formatLocationLabel } from '../utils/location';
-import { RatingBadge } from './RatingDisplay';
 import PlayerAvatarStack from './PlayerAvatarStack';
 
 interface Props {
@@ -13,9 +12,9 @@ interface Props {
   distanceNote?: string;
 }
 
-function avgRating(lobby: Lobby) {
+function avgCompetitivePoints(lobby: Lobby) {
   if (lobby.players.length === 0) return null;
-  const sum = lobby.players.reduce((acc, p) => acc + p.rating, 0);
+  const sum = lobby.players.reduce((acc, p) => acc + (p.competitivePoints ?? 0), 0);
   return sum / lobby.players.length;
 }
 
@@ -26,7 +25,7 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
   const isFull = lobby.players.length >= lobby.maxPlayers;
   const spotsLeft = lobby.maxPlayers - lobby.players.length;
   const dateStr = formatDateTime(lobby.datetime, lang, t.common.today, t.common.tomorrow);
-  const avg = avgRating(lobby);
+  const avg = avgCompetitivePoints(lobby);
   const shownDistanceLabel = distanceLabel ?? `${lobby.distanceKm} ${t.common.km}`;
 
   return (
@@ -60,7 +59,12 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
             )}
           </div>
         </div>
-        {avg !== null && lobby.gameType === 'competitive' && <RatingBadge rating={avg} size="sm" />}
+        {avg !== null && lobby.gameType === 'competitive' && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
+            <Trophy size={11} />
+            {Math.round(avg)}
+          </span>
+        )}
       </div>
 
       {/* Info rows */}
@@ -91,7 +95,7 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
         </div>
         {lobby.minRating && lobby.gameType === 'competitive' && (
           <div className="text-xs text-gray-400">
-            {lang === 'he' ? `מינימום: ★ ${lobby.minRating.toFixed(1)}` : `Min: ★ ${lobby.minRating.toFixed(1)}`}
+            {lang === 'he' ? `מינימום: ${Math.round(lobby.minRating)} נק׳` : `Min: ${Math.round(lobby.minRating)} pts`}
           </div>
         )}
       </div>

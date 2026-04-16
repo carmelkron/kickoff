@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, Lock, MapPin, Pencil, ShieldCheck, Trash2, Trophy, Users } from 'lucide-react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import RatingDisplay, { RatingBadge } from '../components/RatingDisplay';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
@@ -17,12 +16,12 @@ import { calculateCompetitiveStandings } from '../lib/competitiveResults';
 
 type MyStatus = 'none' | 'joined' | 'waitlisted' | 'pending_confirm';
 
-function avgRating(players: { rating: number }[]) {
+function avgCompetitivePoints(players: Array<{ competitivePoints?: number }>) {
   if (!players.length) {
     return null;
   }
 
-  return players.reduce((sum, player) => sum + player.rating, 0) / players.length;
+  return players.reduce((sum, player) => sum + (player.competitivePoints ?? 0), 0) / players.length;
 }
 
 function teamColorClassName(color: TeamColor) {
@@ -156,7 +155,7 @@ export default function LobbyDetailLive() {
 
   const isFull = resolvedLobby.players.length >= resolvedLobby.maxPlayers;
   const dateStr = formatDateTime(resolvedLobby.datetime, lang, t.common.today, t.common.tomorrow);
-  const avg = avgRating(resolvedLobby.players);
+  const avg = avgCompetitivePoints(resolvedLobby.players);
   const isCompetitive = resolvedLobby.gameType === 'competitive';
   const isCreator = currentUser?.id === resolvedLobby.createdBy;
   const isLobbyActive = resolvedLobby.status === 'active';
@@ -524,8 +523,11 @@ export default function LobbyDetailLive() {
           </div>
           {avg !== null && isCompetitive && (
             <div className="text-end">
-              <RatingBadge rating={avg} />
-              <p className="text-xs text-gray-400 mt-1">{lang === 'he' ? 'ממוצע שחקנים' : 'avg rating'}</p>
+              <div className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-3 py-1 text-sm font-semibold text-primary-700">
+                <Trophy size={13} />
+                {Math.round(avg)}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{lang === 'he' ? 'ממוצע נק׳ תחרות' : 'avg comp. points'}</p>
             </div>
           )}
         </div>
@@ -576,8 +578,11 @@ export default function LobbyDetailLive() {
 
         {lobby.minRating && isCompetitive && (
           <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
-            <span className="text-gray-400">{lang === 'he' ? 'דירוג מינימלי:' : 'Min rating:'}</span>
-            <RatingDisplay rating={lobby.minRating} size="sm" />
+            <span className="text-gray-400">{lang === 'he' ? 'מינימום נק׳ תחרות:' : 'Min competitive points:'}</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
+              <Trophy size={11} />
+              {Math.round(lobby.minRating)}
+            </span>
           </div>
         )}
         <div className="mt-2 flex flex-wrap gap-2">
@@ -699,7 +704,7 @@ export default function LobbyDetailLive() {
                           {lang === 'he' ? 'נבחר' : 'Selected'}
                         </span>
                       )}
-                      <RatingDisplay rating={player.rating} size="sm" />
+                      <span className="text-xs font-semibold text-primary-700">🏆 {player.competitivePoints ?? 0}</span>
                     </button>
                   ))}
                 </div>
@@ -829,7 +834,7 @@ export default function LobbyDetailLive() {
                 {player.position && <p className="text-xs text-gray-400">{getPreferredPositionLabel(player.position, lang)}</p>}
               </div>
               <div className="shrink-0">
-                <RatingDisplay rating={player.rating} size="sm" />
+                <p className="text-sm font-semibold text-primary-700">🏆 {player.competitivePoints ?? 0}</p>
                 <p className="text-xs text-gray-400 text-end">
                   {player.gamesPlayed} {t.lobby.gamesPlayed}
                 </p>
@@ -853,7 +858,7 @@ export default function LobbyDetailLive() {
                   {player.initials}
                 </div>
                 <span className="text-gray-700 flex-1">{player.name}</span>
-                <RatingDisplay rating={player.rating} size="sm" />
+                <span className="text-xs font-semibold text-primary-700">🏆 {player.competitivePoints ?? 0}</span>
               </div>
             ))}
           </div>

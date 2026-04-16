@@ -7,7 +7,7 @@ import LobbyCard from '../components/LobbyCard';
 import { fetchLobbies } from '../lib/appData';
 import { Coords, HOME_FILTERS_SESSION_KEY, LocationMode, getDistanceSourceText } from '../utils/distanceSource';
 import { haversineKm } from '../utils/geo';
-import type { FieldType, GenderRestriction, GameType, Lobby } from '../types';
+import type { FieldType, GenderRestriction, GameType, Lobby, Player } from '../types';
 
 type Tab = 'all' | 'friends';
 type RadiusOption = 5 | 10 | 20 | 50 | 999;
@@ -20,9 +20,8 @@ const RADIUS_OPTIONS: { value: RadiusOption; label: string; labelEn: string }[] 
   { value: 999, label: 'הכל', labelEn: 'Any' },
 ];
 
-function avgRating(players: { rating: number }[]) {
-  if (!players.length) return 0;
-  return players.reduce((sum, p) => sum + p.rating, 0) / players.length;
+function competitivePoints(player: Player) {
+  return player.competitivePoints ?? 0;
 }
 
 // --- Session storage helpers ---
@@ -86,7 +85,7 @@ export default function HomeLive() {
 
   const {
     gameSearch, showFilters, gameTypeFilter, filterFieldType,
-    filterNumTeams, filterGender, minRating, canJoinOnly, radiusKm, tab, locationMode, currentCoords,
+    filterNumTeams, filterGender, radiusKm, tab, locationMode, currentCoords,
   } = filters;
 
   function setFilter<K extends keyof FilterState>(key: K, value: FilterState[K]) {
@@ -236,8 +235,6 @@ export default function HomeLive() {
     filterFieldType !== 'all',
     filterNumTeams !== 'all',
     filterGender !== 'all',
-    minRating > 1,
-    canJoinOnly,
     radiusKm !== 999,
   ].filter(Boolean).length;
   const activeDistanceMode = hasActiveCurrentLocation ? 'current' : 'home';
@@ -253,8 +250,6 @@ export default function HomeLive() {
     if (filterFieldType !== 'all' && lobby.fieldType !== filterFieldType) return false;
     if (filterNumTeams !== 'all' && lobby.numTeams !== filterNumTeams) return false;
     if (filterGender !== 'all' && lobby.genderRestriction !== filterGender) return false;
-    if (lobby.gameType === 'competitive' && avgRating(lobby.players) < minRating && lobby.players.length > 0) return false;
-    if (canJoinOnly && currentUser && lobby.minRating && currentUser.rating < lobby.minRating) return false;
     if (radiusKm !== 999 && refPoint && lobby.latitude != null && lobby.longitude != null) {
       const dist = haversineKm(refPoint.lat, refPoint.lng, lobby.latitude, lobby.longitude);
       if (dist > radiusKm) return false;
@@ -352,7 +347,7 @@ export default function HomeLive() {
                       {user.position && <p className="text-xs text-gray-400">{user.position}</p>}
                     </div>
                     <div className="shrink-0 text-end">
-                      <p className="text-xs font-semibold text-gray-600">★ {user.rating.toFixed(1)}</p>
+                      <p className="text-xs font-semibold text-primary-700">🏆 {competitivePoints(user)}</p>
                       {isFriend && <span className="text-xs text-green-600">{lang === 'he' ? 'חבר ✓' : 'Friend ✓'}</span>}
                       {sentRequest && !isFriend && <span className="text-xs text-gray-400">{lang === 'he' ? 'נשלחה' : 'Sent'}</span>}
                     </div>
@@ -490,32 +485,6 @@ export default function HomeLive() {
             </div>
           </div>
 
-          {/* Min rating */}
-          {gameTypeFilter !== 'friendly' && (
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs font-medium text-gray-500">{lang === 'he' ? 'דירוג ממוצע מינימלי' : 'Min average rating'}</p>
-                <span className="text-xs font-bold text-primary-600">★ {minRating.toFixed(1)}</span>
-              </div>
-              <input type="range" min="1" max="10" step="0.5" value={minRating}
-                onChange={(e) => setFilter('minRating', parseFloat(e.target.value))}
-                className="w-full accent-primary-600" />
-              <div className="flex justify-between text-xs text-gray-400 mt-0.5"><span>1.0</span><span>10.0</span></div>
-            </div>
-          )}
-
-          {/* Can join only */}
-          {currentUser && gameTypeFilter !== 'friendly' && (
-            <label className="flex items-center gap-3 cursor-pointer select-none">
-              <div onClick={() => setFilter('canJoinOnly', !canJoinOnly)}
-                className={`relative w-10 h-5 rounded-full transition-colors ${canJoinOnly ? 'bg-primary-600' : 'bg-gray-200'}`}>
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${canJoinOnly ? 'start-5' : 'start-0.5'}`} />
-              </div>
-              <span className="text-xs text-gray-700">
-                {lang === 'he' ? `רק משחקים שאני יכול להיכנס (★ ${currentUser.rating.toFixed(1)})` : `Only games I can join (★ ${currentUser.rating.toFixed(1)})`}
-              </span>
-            </label>
-          )}
         </div>
       )}
 

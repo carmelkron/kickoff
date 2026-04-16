@@ -31,7 +31,6 @@ export default function EditLobbyPage() {
     time: '',
     numTeams: 2,
     playersPerTeam: 5,
-    minRating: '1',
     price: '',
     description: '',
   });
@@ -49,7 +48,6 @@ export default function EditLobbyPage() {
           time: `${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
           numTeams: nextLobby.numTeams ?? 2,
           playersPerTeam: nextLobby.playersPerTeam ?? 5,
-          minRating: String(nextLobby.minRating ?? 1),
           price: nextLobby.price ? String(nextLobby.price) : '',
           description: nextLobby.description ?? '',
         });
@@ -112,7 +110,6 @@ export default function EditLobbyPage() {
         datetime: datetime.toISOString(),
         numTeams: form.numTeams,
         playersPerTeam: form.playersPerTeam,
-        minRating: gameType === 'competitive' ? Number(form.minRating) : undefined,
         price: form.price ? Number(form.price) : undefined,
         description: form.description || undefined,
         gameType,
@@ -210,11 +207,6 @@ export default function EditLobbyPage() {
         </Card>
 
         <Card>
-          {gameType === 'competitive' && (
-            <Field label={lang === 'he' ? `דירוג מינימלי: ★ ${Number(form.minRating).toFixed(1)}` : `Min rating: ★ ${Number(form.minRating).toFixed(1)}`}>
-              <input type="range" min="1" max="10" step="0.5" value={form.minRating} onChange={setField('minRating')} className="w-full accent-primary-600 mt-1" />
-            </Field>
-          )}
           <Field label={t.create.price}>
             <Input type="number" min="0" value={form.price} onChange={setField('price')} placeholder={t.create.pricePlaceholder} />
           </Field>

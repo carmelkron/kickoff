@@ -133,10 +133,6 @@ export function validateCreateLobbyDraft(input: CreateLobbyDraft, now = new Date
     errors.push('Total max players must be between 6 and 44.');
   }
 
-  if (typeof input.minRating === 'number' && (!Number.isFinite(input.minRating) || input.minRating < 1 || input.minRating > 10)) {
-    errors.push('Minimum rating must be between 1 and 10.');
-  }
-
   if (typeof input.price === 'number' && (!Number.isFinite(input.price) || input.price < 0 || input.price > 999)) {
     errors.push('Price must be between 0 and 999.');
   }
@@ -187,10 +183,6 @@ export function validateCreateLobbyPayload(input: CreateLobbyPayload, now = new 
     errors.push('Total max players must be between 6 and 44.');
   }
 
-  if (typeof input.minRating === 'number' && (!Number.isFinite(input.minRating) || input.minRating < 1 || input.minRating > 10)) {
-    errors.push('Minimum rating must be between 1 and 10.');
-  }
-
   if (typeof input.price === 'number' && (!Number.isFinite(input.price) || input.price < 0 || input.price > 999)) {
     errors.push('Price must be between 0 and 999.');
   }
@@ -217,10 +209,6 @@ export function getJoinLobbyError(
 
   if (!options?.allowExistingWaitlist && lobby.waitlist.some((member) => member.id === player.id)) {
     return 'You are already on the waitlist.';
-  }
-
-  if (typeof lobby.minRating === 'number' && player.rating < lobby.minRating) {
-    return `This game requires a minimum rating of ${lobby.minRating.toFixed(1)}.`;
   }
 
   return null;

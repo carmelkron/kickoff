@@ -71,8 +71,12 @@ export function getTeamColorLabel(color: TeamColor, lang: Language) {
   return lang === 'he' ? 'ירוקה' : 'Green';
 }
 
+function playerCompetitivePoints(player: Player) {
+  return player.competitivePoints ?? 0;
+}
+
 function teamRating(team: TeamBucket) {
-  return team.players.reduce((total, player) => total + player.rating, 0);
+  return team.players.reduce((total, player) => total + playerCompetitivePoints(player), 0);
 }
 
 function teamPositionCount(team: TeamBucket, position: PositionKey) {
@@ -190,7 +194,7 @@ export function buildBalancedLobbyTeams(
   for (const position of POSITION_ORDER) {
     const playersForPosition = players
       .filter((player) => normalizePreferredPosition(player.position) === position)
-      .sort((left, right) => right.rating - left.rating);
+      .sort((left, right) => playerCompetitivePoints(right) - playerCompetitivePoints(left));
 
     for (const player of playersForPosition) {
       const selectedTeam = [...teams].sort((left, right) =>
@@ -205,7 +209,7 @@ export function buildBalancedLobbyTeams(
     .map((team) => ({
       color: team.color,
       teamNumber: team.teamNumber,
-      players: [...team.players].sort((left, right) => right.rating - left.rating),
+      players: [...team.players].sort((left, right) => playerCompetitivePoints(right) - playerCompetitivePoints(left)),
     }))
     .sort((left, right) => left.teamNumber - right.teamNumber);
 }

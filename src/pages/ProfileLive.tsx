@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Clock, MapPin, Minus, Pencil, TrendingDown, TrendingUp, Trophy, UserCheck, UserPlus, UserX, X } from 'lucide-react';
+import { ChevronLeft, Clock, MapPin, Pencil, Trophy, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import RatingDisplay from '../components/RatingDisplay';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { fetchCompetitivePointHistory } from '../lib/appData';
@@ -29,7 +28,7 @@ function formatRankLabel(rank: number, lang: 'he' | 'en') {
   return lang === 'he' ? `מקום ${roundedRank}` : `Place ${roundedRank}`;
 }
 
-type HistoryView = 'competitive' | 'rating' | 'games';
+type HistoryView = 'competitive' | 'games';
 
 export default function ProfileLive() {
   const { id } = useParams<{ id: string }>();
@@ -149,22 +148,17 @@ export default function ProfileLive() {
     );
   }
 
-  const ratingColor = profile.rating >= 7 ? 'text-green-600' : profile.rating >= 4 ? 'text-amber-500' : 'text-red-500';
-  const ratingBg = profile.rating >= 7 ? 'bg-green-50' : profile.rating >= 4 ? 'bg-amber-50' : 'bg-red-50';
   const competitivePointsTotal =
     competitiveHistory.length > 0
       ? competitiveHistory.reduce((sum, entry) => sum + entry.points, 0)
       : profile.competitivePoints ?? 0;
   const hasCompetitiveHistory = loadingCompetitiveHistory || competitiveHistory.length > 0 || competitivePointsTotal > 0;
-  const hasRatingHistory = profile.ratingHistory.length > 0;
   const hasLobbyHistory = profile.lobbyHistory.length > 0;
+  const latestCompetitiveGain = competitiveHistory[0]?.points ?? null;
 
   const historyTabs = [
     hasCompetitiveHistory
       ? { id: 'competitive' as const, label: lang === 'he' ? 'תחרותי' : 'Competitive' }
-      : null,
-    hasRatingHistory
-      ? { id: 'rating' as const, label: lang === 'he' ? 'דירוג' : 'Rating' }
       : null,
     hasLobbyHistory
       ? { id: 'games' as const, label: lang === 'he' ? 'משחקים' : 'Games' }
@@ -266,9 +260,9 @@ export default function ProfileLive() {
                   </div>
                 )}
               </div>
-              <div className={`rounded-2xl p-3 text-center ${ratingBg}`}>
-                <RatingDisplay rating={profile.rating} size="lg" />
-                <p className="text-xs text-gray-500 mt-0.5">{lang === 'he' ? 'דירוג' : 'Rating'}</p>
+              <div className="rounded-2xl bg-primary-50 p-3 text-center">
+                <p className="text-2xl font-bold text-primary-700">🏆 {competitivePointsTotal}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{lang === 'he' ? 'נק׳ תחרות' : 'Comp. points'}</p>
               </div>
             </div>
 
@@ -331,22 +325,15 @@ export default function ProfileLive() {
 
         <div className="grid grid-cols-2 gap-4 mt-5 border-t border-gray-100 pt-5 sm:grid-cols-4">
           <StatBox value={profile.gamesPlayed} label={lang === 'he' ? 'משחקים' : 'Games'} />
-          <StatBox value={profile.rating.toFixed(1)} label={lang === 'he' ? 'דירוג' : 'Rating'} color={ratingColor} />
           <StatBox value={competitivePointsTotal} label={lang === 'he' ? 'נק׳ תחרות' : 'Comp. points'} color="text-primary-700" />
           <StatBox
             value={
-              profile.ratingHistory.length > 0
-                ? `${profile.ratingHistory[0].change > 0 ? '+' : ''}${profile.ratingHistory[0].change.toFixed(1)}`
+              latestCompetitiveGain != null
+                ? `+${latestCompetitiveGain}`
                 : '—'
             }
-            label={lang === 'he' ? 'שינוי אחרון' : 'Last Δ'}
-            color={
-              profile.ratingHistory[0]?.change > 0
-                ? 'text-green-600'
-                : profile.ratingHistory[0]?.change < 0
-                  ? 'text-red-500'
-                  : 'text-gray-400'
-            }
+            label={lang === 'he' ? 'רווח אחרון' : 'Latest gain'}
+            color={latestCompetitiveGain != null ? 'text-green-600' : 'text-gray-400'}
           />
         </div>
       </div>
@@ -473,39 +460,8 @@ export default function ProfileLive() {
                   {friend.position && <p className="text-xs text-gray-400">{friend.position}</p>}
                 </div>
                 <div className="shrink-0 text-end">
-                  <p className="text-sm font-semibold text-gray-700">★ {friend.rating.toFixed(1)}</p>
+                  <p className="text-sm font-semibold text-primary-700">🏆 {friend.competitivePoints ?? 0}</p>
                   <p className="text-xs text-gray-400">{friend.gamesPlayed} {lang === 'he' ? 'משחקים' : 'games'}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hasRatingHistory && historyView === 'rating' && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
-          <h2 className="font-semibold text-gray-900 mb-4">{lang === 'he' ? 'היסטוריית דירוג' : 'Rating History'}</h2>
-          <div className="space-y-2">
-            {profile.ratingHistory.map((entry, index) => (
-              <button
-                key={`${entry.lobbyId}-${index}`}
-                type="button"
-                onClick={() => navigate(`/lobby/${entry.lobbyId}`)}
-                className="flex w-full items-center gap-3 rounded-xl border-b border-gray-50 py-2 text-start transition-colors hover:bg-gray-50 last:border-0"
-              >
-                <div className="shrink-0">
-                  {entry.change > 0 ? <TrendingUp size={15} className="text-green-500" /> : entry.change < 0 ? <TrendingDown size={15} className="text-red-500" /> : <Minus size={15} className="text-gray-400" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{entry.lobbyTitle}</p>
-                  <p className="text-xs text-gray-400">{new Date(entry.date).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US')}</p>
-                </div>
-                <div className="text-end shrink-0">
-                  <span className={`text-sm font-semibold ${entry.change > 0 ? 'text-green-600' : entry.change < 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                    {entry.change > 0 ? '+' : ''}
-                    {entry.change.toFixed(1)}
-                  </span>
-                  <p className="text-xs text-gray-400">★ {entry.rating.toFixed(1)}</p>
                 </div>
               </button>
             ))}
@@ -533,9 +489,8 @@ export default function ProfileLive() {
                 </div>
                 <div className="text-end shrink-0">
                   <p className="text-xs text-gray-400">{new Date(entry.date).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US')}</p>
-                  <span className={`text-xs font-medium ${entry.ratingChange > 0 ? 'text-green-600' : entry.ratingChange < 0 ? 'text-red-500' : 'text-gray-400'}`}>
-                    {entry.ratingChange > 0 ? '+' : ''}
-                    {entry.ratingChange.toFixed(1)} ★
+                  <span className="text-xs font-medium text-gray-400">
+                    {lang === 'he' ? 'לצפייה בלובי' : 'Open lobby'}
                   </span>
                 </div>
               </button>
