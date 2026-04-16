@@ -1,11 +1,13 @@
-import type { Language, Lobby } from '../types';
+import type { Language, Lobby, TeamColor } from '../types';
 import { requireSupabase } from './supabase';
+import { getTeamColorLabel } from './teamAssignment';
 
 type NotificationKind =
   | 'friend_request'
   | 'friend_request_accepted'
   | 'friend_request_declined'
   | 'friend_joined_lobby'
+  | 'team_assigned'
   | 'organizer_summary';
 
 type NotificationRow = {
@@ -125,6 +127,23 @@ function mapNotification(row: NotificationRow, lang: Language): AppNotification 
       createdAt: row.created_at,
       lobbyId: row.lobby_id ?? undefined,
       profileId: row.actor_profile_id ?? undefined,
+    };
+  }
+
+  if (row.kind === 'team_assigned') {
+    const teamColor = readString(row.data, 'teamColor') as TeamColor;
+    const lobbyTitle = readString(row.data, 'lobbyTitle');
+    const colorLabel = getTeamColorLabel(teamColor, lang);
+    return {
+      id: row.id,
+      kind: row.kind,
+      title: isHebrew ? `שובצתם לקבוצה ה${colorLabel}` : `You were assigned to the ${colorLabel} team`,
+      message: lobbyTitle
+        ? (isHebrew ? `ההרכבים ל-${lobbyTitle} נקבעו. לחצו כדי לראות את הקבוצות.` : `The lineups for ${lobbyTitle} are ready. Tap to view the teams.`)
+        : (isHebrew ? 'ההרכבים נקבעו. לחצו כדי לראות את הקבוצות.' : 'The lineups are ready. Tap to view the teams.'),
+      isRead: row.is_read,
+      createdAt: row.created_at,
+      lobbyId: row.lobby_id ?? undefined,
     };
   }
 
@@ -336,4 +355,23 @@ export async function createOrganizerSummaryNotification(actorId: string, lobby:
       },
     },
   ]);
+}
+
+export async function createTeamAssignedNotifications(
+  actorId: string,
+  lobby: Lobby,
+  assignments: Array<{ profileId: string; teamColor: TeamColor }>,
+) {
+  await insertNotifications(
+    assignments.map((assignment) => ({
+      profile_id: assignment.profileId,
+      actor_profile_id: actorId,
+      lobby_id: lobby.id,
+      kind: 'team_assigned' as const,
+      data: {
+        lobbyTitle: lobby.title,
+        teamColor: assignment.teamColor,
+      },
+    })),
+  );
 }

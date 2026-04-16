@@ -6,6 +6,7 @@ export type GenderRestriction = 'none' | 'male' | 'female';
 export type FieldType = 'grass' | 'asphalt' | 'indoor';
 export type ContributionType = 'ball' | 'speaker';
 export type LobbyStatus = 'active' | 'deleted' | 'expired';
+export type TeamColor = 'blue' | 'yellow' | 'red' | 'green';
 
 export interface RatingEntry {
   date: string;
@@ -30,6 +31,7 @@ export interface Player {
   initials: string;
   avatarColor: string;
   rating: number;        // 1–10
+  competitivePoints?: number;
   gamesPlayed: number;
   position?: string;
   bio?: string;
@@ -66,6 +68,68 @@ export interface Lobby {
   status: LobbyStatus;
 }
 
+export interface LobbyTeam {
+  id: string;
+  lobbyId: string;
+  color: TeamColor;
+  teamNumber: number;
+  lockedAt?: string;
+}
+
+export interface LobbyTeamResult {
+  lobbyId: string;
+  lobbyTeamId: string;
+  wins: number;
+  rank: number;
+  awardedPoints: number;
+}
+
+export interface LobbyTeamStanding extends LobbyTeamResult {
+  teamColor: TeamColor;
+  teamNumber: number;
+}
+
+export interface LobbyResultSummary {
+  lobbyId: string;
+  submittedByProfileId: string;
+  submittedAt: string;
+  notes?: string;
+  teamResults: LobbyTeamStanding[];
+}
+
+export interface CompetitivePointEvent {
+  id: string;
+  lobbyId: string;
+  profileId: string;
+  awardedByProfileId: string;
+  teamColor: TeamColor;
+  teamNumber: number;
+  wins: number;
+  rank: number;
+  points: number;
+  createdAt: string;
+}
+
+export interface CompetitivePointHistoryEntry {
+  id: string;
+  lobbyId: string;
+  lobbyTitle: string;
+  lobbyDate: string;
+  city: string;
+  teamColor: TeamColor;
+  teamNumber: number;
+  wins: number;
+  rank: number;
+  points: number;
+  createdAt: string;
+  notes?: string;
+}
+
+export interface LobbyTeamAssignment {
+  team: LobbyTeam;
+  players: Player[];
+}
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -81,6 +145,7 @@ export interface AuthUser {
   gender?: Gender;
   ratingHistory: RatingEntry[];
   lobbyHistory: LobbyHistoryEntry[];
+  competitivePoints?: number;
   friends: string[];
   sentRequests: string[];
   pendingRequests: string[];

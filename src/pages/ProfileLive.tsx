@@ -1,10 +1,35 @@
-import { useMemo, useState } from 'react';
-import { ChevronLeft, Clock, MapPin, Minus, Pencil, TrendingDown, TrendingUp, UserCheck, UserPlus, UserX, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, Clock, MapPin, Minus, Pencil, TrendingDown, TrendingUp, Trophy, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import RatingDisplay from '../components/RatingDisplay';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import type { AuthUser } from '../types';
+import { fetchCompetitivePointHistory } from '../lib/appData';
+import { getTeamColorLabel } from '../lib/teamAssignment';
+import type { AuthUser, CompetitivePointHistoryEntry, TeamColor } from '../types';
+
+function teamColorClassName(color: TeamColor) {
+  if (color === 'blue') {
+    return 'bg-blue-500';
+  }
+
+  if (color === 'yellow') {
+    return 'bg-yellow-400';
+  }
+
+  if (color === 'red') {
+    return 'bg-red-500';
+  }
+
+  return 'bg-green-500';
+}
+
+function formatRankLabel(rank: number, lang: 'he' | 'en') {
+  const roundedRank = Number.isInteger(rank) ? `${rank}` : rank.toFixed(1);
+  return lang === 'he' ? `מקום ${roundedRank}` : `Place ${roundedRank}`;
+}
+
+type HistoryView = 'competitive' | 'rating' | 'games';
 
 export default function ProfileLive() {
   const { id } = useParams<{ id: string }>();
@@ -14,10 +39,47 @@ export default function ProfileLive() {
   const [actionError, setActionError] = useState('');
   const [busyAction, setBusyAction] = useState('');
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
+  const [competitiveHistory, setCompetitiveHistory] = useState<CompetitivePointHistoryEntry[]>([]);
+  const [loadingCompetitiveHistory, setLoadingCompetitiveHistory] = useState(false);
+  const [historyView, setHistoryView] = useState<HistoryView>('competitive');
 
   const allUsers = getAllUsers();
   const profile = allUsers.find((user) => user.id === id) ?? null;
   const isMe = currentUser?.id === id;
+
+  useEffect(() => {
+    if (!profile) {
+      setCompetitiveHistory([]);
+      return;
+    }
+
+    const profileId = profile.id;
+    let cancelled = false;
+
+    async function loadCompetitiveHistory() {
+      setLoadingCompetitiveHistory(true);
+      try {
+        const nextHistory = await fetchCompetitivePointHistory(profileId);
+        if (!cancelled) {
+          setCompetitiveHistory(nextHistory);
+        }
+      } catch {
+        if (!cancelled) {
+          setCompetitiveHistory([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingCompetitiveHistory(false);
+        }
+      }
+    }
+
+    void loadCompetitiveHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id]);
 
   const pendingRequests = useMemo(() => {
     if (!isMe || !currentUser) {
@@ -89,6 +151,35 @@ export default function ProfileLive() {
 
   const ratingColor = profile.rating >= 7 ? 'text-green-600' : profile.rating >= 4 ? 'text-amber-500' : 'text-red-500';
   const ratingBg = profile.rating >= 7 ? 'bg-green-50' : profile.rating >= 4 ? 'bg-amber-50' : 'bg-red-50';
+  const competitivePointsTotal =
+    competitiveHistory.length > 0
+      ? competitiveHistory.reduce((sum, entry) => sum + entry.points, 0)
+      : profile.competitivePoints ?? 0;
+  const hasCompetitiveHistory = loadingCompetitiveHistory || competitiveHistory.length > 0 || competitivePointsTotal > 0;
+  const hasRatingHistory = profile.ratingHistory.length > 0;
+  const hasLobbyHistory = profile.lobbyHistory.length > 0;
+
+  const historyTabs = [
+    hasCompetitiveHistory
+      ? { id: 'competitive' as const, label: lang === 'he' ? 'תחרותי' : 'Competitive' }
+      : null,
+    hasRatingHistory
+      ? { id: 'rating' as const, label: lang === 'he' ? 'דירוג' : 'Rating' }
+      : null,
+    hasLobbyHistory
+      ? { id: 'games' as const, label: lang === 'he' ? 'משחקים' : 'Games' }
+      : null,
+  ].filter((tab): tab is { id: HistoryView; label: string } => Boolean(tab));
+
+  useEffect(() => {
+    if (historyTabs.length === 0) {
+      return;
+    }
+
+    if (!historyTabs.some((tab) => tab.id === historyView)) {
+      setHistoryView(historyTabs[0].id);
+    }
+  }, [historyTabs, historyView]);
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
@@ -238,9 +329,10 @@ export default function ProfileLive() {
 
         {actionError && <p className="text-red-500 text-sm mt-4">{actionError}</p>}
 
-        <div className="grid grid-cols-3 gap-4 mt-5 pt-5 border-t border-gray-100">
+        <div className="grid grid-cols-2 gap-4 mt-5 border-t border-gray-100 pt-5 sm:grid-cols-4">
           <StatBox value={profile.gamesPlayed} label={lang === 'he' ? 'משחקים' : 'Games'} />
           <StatBox value={profile.rating.toFixed(1)} label={lang === 'he' ? 'דירוג' : 'Rating'} color={ratingColor} />
+          <StatBox value={competitivePointsTotal} label={lang === 'he' ? 'נק׳ תחרות' : 'Comp. points'} color="text-primary-700" />
           <StatBox
             value={
               profile.ratingHistory.length > 0
@@ -258,6 +350,99 @@ export default function ProfileLive() {
           />
         </div>
       </div>
+
+      {historyTabs.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-2 shadow-sm">
+          <div className="flex flex-wrap gap-2">
+            {historyTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setHistoryView(tab.id)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                  historyView === tab.id
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hasCompetitiveHistory && historyView === 'competitive' && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-gray-900">
+                {lang === 'he' ? 'נקודות תחרות והיסטוריה' : 'Competitive points history'}
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">
+                {lang === 'he'
+                  ? `סה״כ ${competitivePointsTotal} נקודות תחרות`
+                  : `${competitivePointsTotal} total competitive points`}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-primary-50 px-3 py-2 text-center">
+              <p className="text-lg font-bold text-primary-700">{competitivePointsTotal}</p>
+              <p className="text-[11px] text-primary-600">{lang === 'he' ? 'סה״כ' : 'Total'}</p>
+            </div>
+          </div>
+
+          {loadingCompetitiveHistory ? (
+            <p className="text-sm text-gray-500">{lang === 'he' ? 'טוען היסטוריה תחרותית...' : 'Loading competitive history...'}</p>
+          ) : competitiveHistory.length > 0 ? (
+            <div className="space-y-3">
+              {competitiveHistory.map((entry) => (
+                <div key={entry.id} className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50">
+                        <Trophy size={16} className="text-primary-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{entry.lobbyTitle}</p>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          {new Date(entry.lobbyDate).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US')}
+                          {entry.city ? ` • ${entry.city}` : ''}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                          <span className={`inline-block h-2.5 w-2.5 rounded-full ${teamColorClassName(entry.teamColor)}`} />
+                          <span>
+                            {lang === 'he'
+                              ? `קבוצה ${getTeamColorLabel(entry.teamColor, lang)}`
+                              : `${getTeamColorLabel(entry.teamColor, lang)} Team`}
+                          </span>
+                          <span>•</span>
+                          <span>{formatRankLabel(entry.rank, lang)}</span>
+                          <span>•</span>
+                          <span>{entry.wins} {lang === 'he' ? 'ניצחונות' : 'wins'}</span>
+                        </div>
+                        {entry.notes && (
+                          <p className="mt-2 whitespace-pre-wrap text-xs text-amber-800">
+                            {lang === 'he' ? 'הערת מארגן: ' : 'Organizer note: '}
+                            {entry.notes}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-end">
+                      <p className="text-sm font-semibold text-primary-700">+{entry.points}</p>
+                      <p className="text-xs text-gray-400">{lang === 'he' ? 'נקודות' : 'points'}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              {lang === 'he' ? 'אין עדיין היסטוריית נקודות תחרות.' : 'No competitive points history yet.'}
+            </p>
+          )}
+        </div>
+      )}
 
       {isMe && friendsList.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
@@ -292,7 +477,7 @@ export default function ProfileLive() {
         </div>
       )}
 
-      {profile.ratingHistory.length > 0 && (
+      {hasRatingHistory && historyView === 'rating' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
           <h2 className="font-semibold text-gray-900 mb-4">{lang === 'he' ? 'היסטוריית דירוג' : 'Rating History'}</h2>
           <div className="space-y-2">
@@ -318,7 +503,7 @@ export default function ProfileLive() {
         </div>
       )}
 
-      {profile.lobbyHistory.length > 0 && (
+      {hasLobbyHistory && historyView === 'games' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <h2 className="font-semibold text-gray-900 mb-4">{lang === 'he' ? 'משחקים אחרונים' : 'Recent Games'}</h2>
           <div className="space-y-3">

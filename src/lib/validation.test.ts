@@ -46,6 +46,7 @@ describe('validateRegisterDraft', () => {
       email: 'jane@example.com',
       password: 'secret12',
       confirm: 'secret12',
+      position: 'Midfield',
       bio: 'Midfielder',
     });
 
@@ -58,6 +59,7 @@ describe('validateRegisterDraft', () => {
       email: 'not-an-email',
       password: '123',
       confirm: '456',
+      position: '',
       bio: 'x'.repeat(281),
       photoFile: { type: 'image/gif', size: 3 * 1024 * 1024 } as File,
     });
@@ -66,6 +68,7 @@ describe('validateRegisterDraft', () => {
     expect(errors).toContain('Enter a valid email address.');
     expect(errors).toContain('Password must be between 6 and 72 characters.');
     expect(errors).toContain('Passwords do not match.');
+    expect(errors).toContain('Choose your preferred position.');
     expect(errors).toContain('Bio must be 280 characters or fewer.');
     expect(errors).toContain('Profile photo must be a JPG, PNG, or WebP image.');
     expect(errors).toContain('Profile photo must be 2 MB or smaller.');

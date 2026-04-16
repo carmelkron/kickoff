@@ -1,7 +1,9 @@
-import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus } from '../types';
-import { createFriendJoinedLobbyNotifications, createOrganizerSummaryNotification, fetchAcceptedFriendIds } from './appNotifications';
+import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry } from '../types';
+import { createFriendJoinedLobbyNotifications, createOrganizerSummaryNotification, createTeamAssignedNotifications, fetchAcceptedFriendIds } from './appNotifications';
 import { requireSupabase } from './supabase';
 import { getJoinLobbyError, normalizeText, validateCreateLobbyPayload } from './validation';
+import { calculateCompetitiveStandings } from './competitiveResults';
+import { buildBalancedLobbyTeams } from './teamAssignment';
 
 const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, is_private, price, description, created_by, distance_km, game_type, field_type, gender_restriction, latitude, longitude';
 const LOBBY_SELECT_FIELDS_WITH_STATUS = `${LOBBY_SELECT_FIELDS}, status`;
@@ -56,6 +58,7 @@ type ProfileRow = {
   avatar_color: string;
   rating: number;
   games_played: number;
+  competitive_points?: number;
   position: string | null;
   bio: string | null;
   photo_url: string | null;
@@ -92,6 +95,48 @@ type MembershipRow = {
   profile_id: string;
   status: 'joined' | 'waitlisted' | 'pending_confirm' | 'left';
   created_at?: string;
+};
+
+type LobbyTeamRow = {
+  id: string;
+  lobby_id: string;
+  color: TeamColor;
+  team_number: number;
+  locked_at: string | null;
+};
+
+type LobbyTeamMemberRow = {
+  lobby_id: string;
+  lobby_team_id: string;
+  profile_id: string;
+};
+
+type LobbyResultRow = {
+  lobby_id: string;
+  submitted_by_profile_id: string;
+  submitted_at: string;
+  notes: string | null;
+};
+
+type LobbyTeamResultRow = {
+  lobby_id: string;
+  lobby_team_id: string;
+  wins: number;
+  rank: number;
+  awarded_points: number;
+};
+
+type CompetitivePointEventRow = {
+  id: string;
+  lobby_id: string;
+  profile_id: string;
+  awarded_by_profile_id: string;
+  team_color: TeamColor;
+  team_number: number;
+  wins: number;
+  rank: number;
+  points: number;
+  created_at: string;
 };
 
 function resolveLobbyStatus(row: LobbyRow): LobbyStatus {
@@ -149,6 +194,7 @@ function mapProfile(row: ProfileRow): Player {
     email: row.email ?? undefined,
     photoUrl: row.photo_url ?? undefined,
     gender: row.gender ?? undefined,
+    competitivePoints: row.competitive_points ?? 0,
     ratingHistory: row.rating_history ?? [],
     lobbyHistory: row.lobby_history ?? [],
   };
@@ -158,7 +204,7 @@ export async function fetchProfiles(): Promise<Player[]> {
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, email, name, initials, avatar_color, rating, games_played, position, bio, photo_url, gender, rating_history, lobby_history')
+    .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history')
     .order('name', { ascending: true });
 
   if (error) {
@@ -172,7 +218,7 @@ export async function fetchProfileById(id: string): Promise<Player | null> {
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, email, name, initials, avatar_color, rating, games_played, position, bio, photo_url, gender, rating_history, lobby_history')
+    .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history')
     .eq('id', id)
     .maybeSingle();
 
@@ -223,7 +269,7 @@ export async function fetchLobbies(): Promise<Lobby[]> {
     fetchLobbyRows().then((data) => ({ data, error: null })),
     supabase
       .from('profiles')
-      .select('id, email, name, initials, avatar_color, rating, games_played, position, bio, photo_url, gender, rating_history, lobby_history'),
+      .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history'),
     supabase
       .from('lobby_memberships')
       .select('lobby_id, profile_id, status, created_at'),
@@ -291,6 +337,540 @@ export async function fetchLobbies(): Promise<Lobby[]> {
 export async function fetchLobbyById(id: string): Promise<Lobby | null> {
   const lobbies = await fetchLobbies();
   return lobbies.find((lobby) => lobby.id === id) ?? null;
+}
+
+function mapLobbyTeam(row: LobbyTeamRow): LobbyTeam {
+  return {
+    id: row.id,
+    lobbyId: row.lobby_id,
+    color: row.color,
+    teamNumber: row.team_number,
+    lockedAt: row.locked_at ?? undefined,
+  };
+}
+
+export async function fetchLobbyTeams(lobbyId: string): Promise<LobbyTeamAssignment[]> {
+  const supabase = requireSupabase();
+  const { data: teamRows, error: teamsError } = await supabase
+    .from('lobby_teams')
+    .select('id, lobby_id, color, team_number, locked_at')
+    .eq('lobby_id', lobbyId)
+    .order('team_number', { ascending: true });
+
+  if (teamsError) {
+    throw teamsError;
+  }
+
+  const teams = (teamRows ?? []) as LobbyTeamRow[];
+  if (teams.length === 0) {
+    return [];
+  }
+
+  const { data: memberRows, error: membersError } = await supabase
+    .from('lobby_team_members')
+    .select('lobby_id, lobby_team_id, profile_id')
+    .eq('lobby_id', lobbyId);
+
+  if (membersError) {
+    throw membersError;
+  }
+
+  const profileIds = [...new Set(((memberRows ?? []) as LobbyTeamMemberRow[]).map((row) => row.profile_id))];
+  if (profileIds.length === 0) {
+    return teams.map((row) => ({
+      team: mapLobbyTeam(row),
+      players: [],
+    }));
+  }
+
+  const { data: profileRows, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history')
+    .in('id', profileIds);
+
+  if (profilesError) {
+    throw profilesError;
+  }
+
+  const playersById = new Map(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
+  const membersByTeamId = new Map<string, Player[]>();
+
+  for (const row of (memberRows ?? []) as LobbyTeamMemberRow[]) {
+    const player = playersById.get(row.profile_id);
+    if (!player) {
+      continue;
+    }
+    const players = membersByTeamId.get(row.lobby_team_id) ?? [];
+    players.push(player);
+    membersByTeamId.set(row.lobby_team_id, players);
+  }
+
+  return teams.map((row) => ({
+    team: mapLobbyTeam(row),
+    players: [...(membersByTeamId.get(row.id) ?? [])].sort((left, right) => right.rating - left.rating),
+  }));
+}
+
+export async function generateLobbyTeams(lobbyId: string, actorProfileId: string): Promise<LobbyTeamAssignment[]> {
+  const supabase = requireSupabase();
+  const lobby = await fetchLobbyById(lobbyId);
+
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (!lobby.numTeams || !lobby.playersPerTeam) {
+    throw new Error('This lobby is missing team settings.');
+  }
+
+  if (lobby.players.length !== lobby.maxPlayers) {
+    throw new Error('Teams can only be created once the lobby is full.');
+  }
+
+  const { data: existingResults, error: existingResultsError } = await supabase
+    .from('lobby_results')
+    .select('lobby_id')
+    .eq('lobby_id', lobbyId)
+    .maybeSingle();
+
+  if (existingResultsError) {
+    throw existingResultsError;
+  }
+
+  if (existingResults) {
+    throw new Error('Teams cannot be changed after results were submitted.');
+  }
+
+  const existingTeams = await fetchLobbyTeams(lobbyId);
+  if (existingTeams.length > 0) {
+    throw new Error('Teams were already created for this lobby.');
+  }
+
+  const generatedTeams = buildBalancedLobbyTeams(lobby.players, lobby.numTeams, lobby.playersPerTeam);
+  const timestamp = new Date().toISOString();
+
+  const { data: insertedTeams, error: insertTeamsError } = await supabase
+    .from('lobby_teams')
+    .insert(
+      generatedTeams.map((team) => ({
+        lobby_id: lobbyId,
+        color: team.color,
+        team_number: team.teamNumber,
+        locked_at: timestamp,
+      })),
+    )
+    .select('id, lobby_id, color, team_number, locked_at');
+
+  if (insertTeamsError) {
+    throw insertTeamsError;
+  }
+
+  const teamIdByNumber = new Map(((insertedTeams ?? []) as LobbyTeamRow[]).map((row) => [row.team_number, row.id]));
+  const memberPayload = generatedTeams.flatMap((team) => {
+    const lobbyTeamId = teamIdByNumber.get(team.teamNumber);
+    if (!lobbyTeamId) {
+      throw new Error(`Failed to resolve created team ${team.teamNumber}.`);
+    }
+
+    return team.players.map((player) => ({
+      lobby_id: lobbyId,
+      lobby_team_id: lobbyTeamId,
+      profile_id: player.id,
+    }));
+  });
+
+  const { error: insertMembersError } = await supabase.from('lobby_team_members').insert(memberPayload);
+  if (insertMembersError) {
+    throw insertMembersError;
+  }
+
+  await createTeamAssignedNotifications(
+    actorProfileId,
+    lobby,
+    generatedTeams.flatMap((team) =>
+      team.players.map((player) => ({
+        profileId: player.id,
+        teamColor: team.color,
+      })),
+    ),
+  );
+
+  return fetchLobbyTeams(lobbyId);
+}
+
+export async function swapLobbyTeamPlayers(
+  lobbyId: string,
+  actorProfileId: string,
+  firstProfileId: string,
+  secondProfileId: string,
+): Promise<LobbyTeamAssignment[]> {
+  const supabase = requireSupabase();
+  const lobby = await fetchLobbyById(lobbyId);
+
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (lobby.createdBy !== actorProfileId) {
+    throw new Error('Only the lobby creator can edit teams.');
+  }
+
+  const { data: existingResults, error: existingResultsError } = await supabase
+    .from('lobby_results')
+    .select('lobby_id')
+    .eq('lobby_id', lobbyId)
+    .maybeSingle();
+
+  if (existingResultsError) {
+    throw existingResultsError;
+  }
+
+  if (existingResults) {
+    throw new Error('Teams cannot be changed after results were submitted.');
+  }
+
+  const { data: teamRows, error: teamsError } = await supabase
+    .from('lobby_teams')
+    .select('id, lobby_id, color, team_number, locked_at')
+    .eq('lobby_id', lobbyId);
+
+  if (teamsError) {
+    throw teamsError;
+  }
+
+  const teams = (teamRows ?? []) as LobbyTeamRow[];
+  if (teams.length === 0) {
+    throw new Error('Teams were not created for this lobby yet.');
+  }
+
+  const { data: memberRows, error: membersError } = await supabase
+    .from('lobby_team_members')
+    .select('lobby_id, lobby_team_id, profile_id')
+    .eq('lobby_id', lobbyId)
+    .in('profile_id', [firstProfileId, secondProfileId]);
+
+  if (membersError) {
+    throw membersError;
+  }
+
+  const members = (memberRows ?? []) as LobbyTeamMemberRow[];
+  const firstMember = members.find((member) => member.profile_id === firstProfileId);
+  const secondMember = members.find((member) => member.profile_id === secondProfileId);
+
+  if (!firstMember || !secondMember) {
+    throw new Error('Both selected players must already belong to a team.');
+  }
+
+  if (firstMember.lobby_team_id === secondMember.lobby_team_id) {
+    throw new Error('Select players from different teams to swap them.');
+  }
+
+  const { error: updateFirstError } = await supabase
+    .from('lobby_team_members')
+    .update({ lobby_team_id: secondMember.lobby_team_id })
+    .eq('lobby_id', lobbyId)
+    .eq('profile_id', firstProfileId);
+
+  if (updateFirstError) {
+    throw updateFirstError;
+  }
+
+  const { error: updateSecondError } = await supabase
+    .from('lobby_team_members')
+    .update({ lobby_team_id: firstMember.lobby_team_id })
+    .eq('lobby_id', lobbyId)
+    .eq('profile_id', secondProfileId);
+
+  if (updateSecondError) {
+    throw updateSecondError;
+  }
+
+  const teamsById = new Map(teams.map((team) => [team.id, team]));
+  const firstTargetTeam = teamsById.get(secondMember.lobby_team_id);
+  const secondTargetTeam = teamsById.get(firstMember.lobby_team_id);
+
+  if (firstTargetTeam && secondTargetTeam) {
+    await createTeamAssignedNotifications(actorProfileId, lobby, [
+      { profileId: firstProfileId, teamColor: firstTargetTeam.color },
+      { profileId: secondProfileId, teamColor: secondTargetTeam.color },
+    ]);
+  }
+
+  return fetchLobbyTeams(lobbyId);
+}
+
+export async function fetchLobbyResult(lobbyId: string): Promise<LobbyResultSummary | null> {
+  const supabase = requireSupabase();
+  const { data: resultRow, error: resultError } = await supabase
+    .from('lobby_results')
+    .select('lobby_id, submitted_by_profile_id, submitted_at, notes')
+    .eq('lobby_id', lobbyId)
+    .maybeSingle();
+
+  if (resultError) {
+    throw resultError;
+  }
+
+  if (!resultRow) {
+    return null;
+  }
+
+  const [teamRowsResult, teamResultsResult] = await Promise.all([
+    supabase
+      .from('lobby_teams')
+      .select('id, lobby_id, color, team_number, locked_at')
+      .eq('lobby_id', lobbyId),
+    supabase
+      .from('lobby_team_results')
+      .select('lobby_id, lobby_team_id, wins, rank, awarded_points')
+      .eq('lobby_id', lobbyId),
+  ]);
+
+  if (teamRowsResult.error) {
+    throw teamRowsResult.error;
+  }
+
+  if (teamResultsResult.error) {
+    throw teamResultsResult.error;
+  }
+
+  const teamsById = new Map(((teamRowsResult.data ?? []) as LobbyTeamRow[]).map((row) => [row.id, row]));
+  const teamResults: LobbyTeamStanding[] = ((teamResultsResult.data ?? []) as LobbyTeamResultRow[])
+    .map((row) => {
+      const team = teamsById.get(row.lobby_team_id);
+      if (!team) {
+        return null;
+      }
+
+      return {
+        lobbyId: row.lobby_id,
+        lobbyTeamId: row.lobby_team_id,
+        wins: row.wins,
+        rank: row.rank,
+        awardedPoints: row.awarded_points,
+        teamColor: team.color,
+        teamNumber: team.team_number,
+      };
+    })
+    .filter((row): row is LobbyTeamStanding => Boolean(row))
+    .sort((left, right) => left.teamNumber - right.teamNumber);
+
+  const result = resultRow as LobbyResultRow;
+  return {
+    lobbyId: result.lobby_id,
+    submittedByProfileId: result.submitted_by_profile_id,
+    submittedAt: result.submitted_at,
+    notes: result.notes ?? undefined,
+    teamResults,
+  };
+}
+
+export async function fetchCompetitivePointHistory(profileId: string): Promise<CompetitivePointHistoryEntry[]> {
+  const supabase = requireSupabase();
+  const { data: eventRows, error: eventsError } = await supabase
+    .from('competitive_point_events')
+    .select('id, lobby_id, profile_id, awarded_by_profile_id, team_color, team_number, wins, rank, points, created_at')
+    .eq('profile_id', profileId)
+    .order('created_at', { ascending: false });
+
+  if (eventsError) {
+    throw eventsError;
+  }
+
+  const events = (eventRows ?? []) as CompetitivePointEventRow[];
+  if (events.length === 0) {
+    return [];
+  }
+
+  const lobbyIds = [...new Set(events.map((event) => event.lobby_id))];
+  const [{ data: lobbyRows, error: lobbiesError }, { data: resultRows, error: resultsError }] = await Promise.all([
+    supabase
+      .from('lobbies')
+      .select('id, title, city, datetime')
+      .in('id', lobbyIds),
+    supabase
+      .from('lobby_results')
+      .select('lobby_id, notes')
+      .in('lobby_id', lobbyIds),
+  ]);
+
+  if (lobbiesError) {
+    throw lobbiesError;
+  }
+
+  if (resultsError) {
+    throw resultsError;
+  }
+
+  const lobbyById = new Map(
+    ((lobbyRows ?? []) as Array<{ id: string; title: string; city: string; datetime: string }>).map((row) => [row.id, row]),
+  );
+  const resultByLobbyId = new Map(
+    ((resultRows ?? []) as LobbyResultRow[]).map((row) => [row.lobby_id, row]),
+  );
+
+  return events.map((event) => {
+    const lobby = lobbyById.get(event.lobby_id);
+    const result = resultByLobbyId.get(event.lobby_id);
+
+    return {
+      id: event.id,
+      lobbyId: event.lobby_id,
+      lobbyTitle: lobby?.title ?? 'Competitive lobby',
+      lobbyDate: lobby?.datetime ?? event.created_at,
+      city: lobby?.city ?? '',
+      teamColor: event.team_color,
+      teamNumber: event.team_number,
+      wins: event.wins,
+      rank: event.rank,
+      points: event.points,
+      createdAt: event.created_at,
+      notes: result?.notes ?? undefined,
+    };
+  });
+}
+
+export async function submitCompetitiveLobbyResult(
+  lobbyId: string,
+  submittedByProfileId: string,
+  winsByTeamId: Record<string, number>,
+  notes?: string,
+): Promise<LobbyResultSummary> {
+  const supabase = requireSupabase();
+  const lobby = await fetchLobbyById(lobbyId);
+
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (lobby.createdBy !== submittedByProfileId) {
+    throw new Error('Only the lobby creator can submit the result.');
+  }
+
+  if (lobby.gameType !== 'competitive') {
+    throw new Error('Results are only available for competitive lobbies.');
+  }
+
+  if (new Date(lobby.datetime) > new Date()) {
+    throw new Error('You can submit the result only after the game starts.');
+  }
+
+  const [existingResult, teamAssignments] = await Promise.all([
+    fetchLobbyResult(lobbyId),
+    fetchLobbyTeams(lobbyId),
+  ]);
+
+  if (existingResult) {
+    throw new Error('Results were already submitted for this lobby.');
+  }
+
+  if (teamAssignments.length < 2) {
+    throw new Error('Create the teams before submitting a result.');
+  }
+
+  const standings = calculateCompetitiveStandings(
+    teamAssignments.map((assignment) => ({
+      teamId: assignment.team.id,
+      color: assignment.team.color,
+      teamNumber: assignment.team.teamNumber,
+      wins: winsByTeamId[assignment.team.id] ?? 0,
+    })),
+  );
+
+  const { error: resultInsertError } = await supabase.from('lobby_results').insert({
+    lobby_id: lobbyId,
+    submitted_by_profile_id: submittedByProfileId,
+    notes: notes ? normalizeText(notes) : null,
+  });
+
+  if (resultInsertError) {
+    throw resultInsertError;
+  }
+
+  const { error: teamResultsInsertError } = await supabase.from('lobby_team_results').insert(
+    standings.map((standing) => ({
+      lobby_id: lobbyId,
+      lobby_team_id: standing.teamId,
+      wins: standing.wins,
+      rank: standing.rank,
+      awarded_points: standing.awardedPoints,
+    })),
+  );
+
+  if (teamResultsInsertError) {
+    throw teamResultsInsertError;
+  }
+
+  const standingByTeamId = new Map(standings.map((standing) => [standing.teamId, standing]));
+  const pointEvents = teamAssignments.flatMap((assignment) => {
+    const standing = standingByTeamId.get(assignment.team.id);
+    if (!standing) {
+      throw new Error('Failed to map standings to teams.');
+    }
+
+    return assignment.players.map((player) => ({
+      lobby_id: lobbyId,
+      profile_id: player.id,
+      awarded_by_profile_id: submittedByProfileId,
+      team_color: standing.color,
+      team_number: standing.teamNumber,
+      wins: standing.wins,
+      rank: standing.rank,
+      points: standing.awardedPoints,
+      reason: 'competitive_lobby_result',
+    }));
+  });
+
+  const { error: pointEventsError } = await supabase.from('competitive_point_events').insert(pointEvents);
+  if (pointEventsError) {
+    throw pointEventsError;
+  }
+
+  const pointsByProfileId = new Map<string, number>();
+  for (const event of pointEvents) {
+    pointsByProfileId.set(event.profile_id, (pointsByProfileId.get(event.profile_id) ?? 0) + event.points);
+  }
+
+  const profileIds = [...pointsByProfileId.keys()];
+  if (profileIds.length > 0) {
+    const { data: profileRows, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, competitive_points')
+      .in('id', profileIds);
+
+    if (profilesError) {
+      throw profilesError;
+    }
+
+    const currentPointsById = new Map(
+      ((profileRows ?? []) as Array<{ id: string; competitive_points: number | null }>).map((row) => [
+        row.id,
+        row.competitive_points ?? 0,
+      ]),
+    );
+
+    await Promise.all(
+      profileIds.map(async (profileId) => {
+        const currentPoints = currentPointsById.get(profileId) ?? 0;
+        const awardedPoints = pointsByProfileId.get(profileId) ?? 0;
+        const { error: updatePointsError } = await supabase
+          .from('profiles')
+          .update({ competitive_points: currentPoints + awardedPoints })
+          .eq('id', profileId);
+
+        if (updatePointsError) {
+          throw updatePointsError;
+        }
+      }),
+    );
+  }
+
+  const nextResult = await fetchLobbyResult(lobbyId);
+  if (!nextResult) {
+    throw new Error('Failed to load the submitted result.');
+  }
+
+  return nextResult;
 }
 
 export type CreateLobbyInput = {

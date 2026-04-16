@@ -13,6 +13,7 @@ create table if not exists public.profiles (
   avatar_color text not null,
   rating numeric(3, 1) not null default 5.0,
   games_played integer not null default 0,
+  competitive_points integer not null default 0,
   position text,
   bio text,
   photo_url text,
@@ -26,6 +27,7 @@ alter table public.profiles add column if not exists gender text check (gender i
 alter table public.profiles add column if not exists home_latitude double precision;
 alter table public.profiles add column if not exists home_longitude double precision;
 alter table public.profiles add column if not exists home_address text;
+alter table public.profiles add column if not exists competitive_points integer not null default 0;
 
 create table if not exists public.lobbies (
   id text primary key,
@@ -80,6 +82,8 @@ alter table public.profiles drop constraint if exists profiles_rating_range_chec
 alter table public.profiles add constraint profiles_rating_range_check check (rating between 1.0 and 10.0);
 alter table public.profiles drop constraint if exists profiles_games_played_non_negative_check;
 alter table public.profiles add constraint profiles_games_played_non_negative_check check (games_played >= 0);
+alter table public.profiles drop constraint if exists profiles_competitive_points_non_negative_check;
+alter table public.profiles add constraint profiles_competitive_points_non_negative_check check (competitive_points >= 0);
 alter table public.profiles drop constraint if exists profiles_bio_length_check;
 alter table public.profiles add constraint profiles_bio_length_check check (bio is null or char_length(bio) <= 280);
 
@@ -125,10 +129,67 @@ create table if not exists public.notifications (
   profile_id text not null references public.profiles (id) on delete cascade,
   actor_profile_id text references public.profiles (id) on delete cascade,
   lobby_id text references public.lobbies (id) on delete cascade,
-  kind text not null check (kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'organizer_summary')),
+  kind text not null check (kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'team_assigned', 'organizer_summary')),
   data jsonb not null default '{}'::jsonb,
   is_read boolean not null default false,
   created_at timestamptz not null default now()
+);
+
+create table if not exists public.lobby_teams (
+  id uuid primary key default gen_random_uuid(),
+  lobby_id text not null references public.lobbies (id) on delete cascade,
+  color text not null check (color in ('blue', 'yellow', 'red', 'green')),
+  team_number integer not null check (team_number between 1 and 4),
+  locked_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (lobby_id, color),
+  unique (lobby_id, team_number),
+  unique (id, lobby_id)
+);
+
+create table if not exists public.lobby_team_members (
+  lobby_id text not null references public.lobbies (id) on delete cascade,
+  lobby_team_id uuid not null,
+  profile_id text not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (lobby_team_id, profile_id),
+  unique (lobby_id, profile_id),
+  foreign key (lobby_team_id, lobby_id) references public.lobby_teams (id, lobby_id) on delete cascade
+);
+
+create table if not exists public.lobby_results (
+  lobby_id text primary key references public.lobbies (id) on delete cascade,
+  submitted_by_profile_id text not null references public.profiles (id) on delete restrict,
+  submitted_at timestamptz not null default now(),
+  notes text,
+  check (char_length(coalesce(notes, '')) <= 500)
+);
+
+create table if not exists public.lobby_team_results (
+  lobby_id text not null,
+  lobby_team_id uuid not null,
+  wins integer not null default 0 check (wins >= 0),
+  rank numeric(4, 2) not null check (rank between 1 and 4),
+  awarded_points integer not null check (awarded_points >= 0 and awarded_points % 5 = 0),
+  created_at timestamptz not null default now(),
+  primary key (lobby_id, lobby_team_id),
+  foreign key (lobby_id) references public.lobby_results (lobby_id) on delete cascade,
+  foreign key (lobby_team_id, lobby_id) references public.lobby_teams (id, lobby_id) on delete cascade
+);
+
+create table if not exists public.competitive_point_events (
+  id uuid primary key default gen_random_uuid(),
+  lobby_id text not null references public.lobbies (id) on delete cascade,
+  profile_id text not null references public.profiles (id) on delete cascade,
+  awarded_by_profile_id text not null references public.profiles (id) on delete restrict,
+  team_color text not null check (team_color in ('blue', 'yellow', 'red', 'green')),
+  team_number integer not null check (team_number between 1 and 4),
+  wins integer not null default 0 check (wins >= 0),
+  rank numeric(4, 2) not null check (rank between 1 and 4),
+  points integer not null check (points >= 0 and points % 5 = 0),
+  reason text not null default 'competitive_lobby_result' check (reason in ('competitive_lobby_result')),
+  created_at timestamptz not null default now(),
+  unique (lobby_id, profile_id)
 );
 
 create index if not exists profiles_auth_user_id_idx on public.profiles (auth_user_id);
@@ -139,6 +200,12 @@ create index if not exists lobby_ratings_lobby_id_idx on public.lobby_ratings (l
 create index if not exists lobby_ratings_rated_profile_id_idx on public.lobby_ratings (rated_profile_id);
 create index if not exists notifications_profile_id_created_at_idx on public.notifications (profile_id, created_at desc);
 create index if not exists notifications_profile_id_is_read_idx on public.notifications (profile_id, is_read);
+create index if not exists lobby_teams_lobby_id_idx on public.lobby_teams (lobby_id);
+create index if not exists lobby_team_members_lobby_id_idx on public.lobby_team_members (lobby_id);
+create index if not exists lobby_team_members_profile_id_idx on public.lobby_team_members (profile_id);
+create index if not exists lobby_team_results_lobby_id_idx on public.lobby_team_results (lobby_id);
+create index if not exists competitive_point_events_profile_id_created_at_idx on public.competitive_point_events (profile_id, created_at desc);
+create index if not exists competitive_point_events_lobby_id_idx on public.competitive_point_events (lobby_id);
 
 alter table public.profiles enable row level security;
 alter table public.lobbies enable row level security;
@@ -146,6 +213,11 @@ alter table public.lobby_memberships enable row level security;
 alter table public.friend_requests enable row level security;
 alter table public.lobby_ratings enable row level security;
 alter table public.notifications enable row level security;
+alter table public.lobby_teams enable row level security;
+alter table public.lobby_team_members enable row level security;
+alter table public.lobby_results enable row level security;
+alter table public.lobby_team_results enable row level security;
+alter table public.competitive_point_events enable row level security;
 
 drop policy if exists "profiles are readable by everyone" on public.profiles;
 create policy "profiles are readable by everyone"
@@ -340,7 +412,7 @@ alter table public.lobbies drop constraint if exists lobbies_status_check;
 alter table public.lobbies add constraint lobbies_status_check check (status in ('active', 'deleted'));
 alter table public.notifications drop constraint if exists notifications_kind_check;
 alter table public.notifications add constraint notifications_kind_check check (
-  kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'organizer_summary')
+  kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'team_assigned', 'organizer_summary')
 );
 
 -- Contribution icons (ball/speaker) per lobby
@@ -372,6 +444,159 @@ using (
 )
 with check (
   exists (select 1 from public.profiles p where p.id = profile_id and p.auth_user_id = auth.uid())
+);
+
+drop policy if exists "lobby teams readable by everyone" on public.lobby_teams;
+create policy "lobby teams readable by everyone"
+on public.lobby_teams
+for select
+using (true);
+
+drop policy if exists "lobby team members readable by everyone" on public.lobby_team_members;
+create policy "lobby team members readable by everyone"
+on public.lobby_team_members
+for select
+using (true);
+
+drop policy if exists "lobby results readable by everyone" on public.lobby_results;
+create policy "lobby results readable by everyone"
+on public.lobby_results
+for select
+using (true);
+
+drop policy if exists "lobby team results readable by everyone" on public.lobby_team_results;
+create policy "lobby team results readable by everyone"
+on public.lobby_team_results
+for select
+using (true);
+
+drop policy if exists "competitive point events readable by everyone" on public.competitive_point_events;
+create policy "competitive point events readable by everyone"
+on public.competitive_point_events
+for select
+using (true);
+
+drop policy if exists "lobby creators can manage teams" on public.lobby_teams;
+create policy "lobby creators can manage teams"
+on public.lobby_teams
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and p.auth_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and p.auth_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "lobby creators can manage team members" on public.lobby_team_members;
+create policy "lobby creators can manage team members"
+on public.lobby_team_members
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and p.auth_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and p.auth_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "lobby creators can manage results" on public.lobby_results;
+create policy "lobby creators can manage results"
+on public.lobby_results
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and p.auth_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and l.created_by = submitted_by_profile_id
+      and p.auth_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "lobby creators can manage team results" on public.lobby_team_results;
+create policy "lobby creators can manage team results"
+on public.lobby_team_results
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and p.auth_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and p.auth_user_id = auth.uid()
+  )
+);
+
+drop policy if exists "lobby creators can manage competitive point events" on public.competitive_point_events;
+create policy "lobby creators can manage competitive point events"
+on public.competitive_point_events
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and l.created_by = awarded_by_profile_id
+      and p.auth_user_id = auth.uid()
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and l.created_by = awarded_by_profile_id
+      and p.auth_user_id = auth.uid()
+  )
 );
 
 drop policy if exists "authenticated users can submit lobby ratings" on public.lobby_ratings;
@@ -514,6 +739,23 @@ with check (
             (fr.from_profile_id = actor_profile_id and fr.to_profile_id = profile_id)
             or (fr.from_profile_id = profile_id and fr.to_profile_id = actor_profile_id)
           )
+      )
+    )
+    or (
+      kind = 'team_assigned'
+      and lobby_id is not null
+      and exists (
+        select 1
+        from public.lobbies l
+        where l.id = lobby_id
+          and l.created_by = actor_profile_id
+      )
+      and exists (
+        select 1
+        from public.lobby_memberships lm
+        where lm.lobby_id = lobby_id
+          and lm.profile_id = profile_id
+          and lm.status = 'joined'
       )
     )
     or (

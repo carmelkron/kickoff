@@ -8,6 +8,7 @@ export type RegisterDraft = {
   email: string;
   password: string;
   confirm?: string;
+  position?: string;
   bio?: string;
   photoFile?: File | null;
 };
@@ -65,6 +66,10 @@ export function validateRegisterDraft(input: RegisterDraft) {
 
   if (typeof input.confirm === 'string' && input.password !== input.confirm) {
     errors.push('Passwords do not match.');
+  }
+
+  if (!input.position || normalizeText(input.position).length === 0) {
+    errors.push('Choose your preferred position.');
   }
 
   if (bio.length > 280) {

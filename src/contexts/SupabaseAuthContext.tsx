@@ -19,6 +19,7 @@ type ProfileRow = {
   avatar_color: string;
   rating: number;
   games_played: number;
+  competitive_points: number | null;
   position: string | null;
   bio: string | null;
   photo_url: string | null;
@@ -42,7 +43,7 @@ type RegisterInput = {
   password?: string;
   initials: string;
   avatarColor: string;
-  position?: string;
+  position: string;
   bio?: string;
   gender?: Gender;
   photoFile?: File;
@@ -75,6 +76,7 @@ function mapProfileToAuthUser(profile: ProfileRow, overrides?: Partial<AuthUser>
     avatarColor: profile.avatar_color,
     rating: profile.rating,
     gamesPlayed: profile.games_played,
+    competitivePoints: profile.competitive_points ?? 0,
     position: profile.position ?? undefined,
     bio: profile.bio ?? undefined,
     photoUrl: profile.photo_url ?? undefined,
@@ -200,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function refresh(authUserId: string | null) {
     const { data: profilesData, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, position, bio, photo_url, gender, rating_history, lobby_history, home_latitude, home_longitude, home_address')
+      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history, home_latitude, home_longitude, home_address')
       .order('name', { ascending: true });
 
     if (profilesError) {
@@ -314,6 +316,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: data.name,
       email: data.email,
       password: data.password ?? '',
+      position: data.position,
       bio: data.bio,
       photoFile: data.photoFile ?? null,
     });

@@ -1,17 +1,19 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, Lock, MapPin, Pencil, ShieldCheck, Star, Trash2, Trophy, Users } from 'lucide-react';
+import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, Lock, MapPin, Pencil, ShieldCheck, Trash2, Trophy, Users } from 'lucide-react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import RatingDisplay, { RatingBadge } from '../components/RatingDisplay';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, toggleContribution, upsertLobbyMembership } from '../lib/appData';
+import { deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
 import { getJoinLobbyError } from '../lib/validation';
-import type { ContributionType, Lobby } from '../types';
+import type { ContributionType, Lobby, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
 import { formatDateTime } from '../utils/format';
 import { getDistanceSourceText, loadSessionDistancePreference } from '../utils/distanceSource';
 import { haversineKm } from '../utils/geo';
 import { formatLocationLabel } from '../utils/location';
 import LocationPreviewMap from '../components/LocationPreviewMap';
+import { getPreferredPositionLabel, getTeamColorLabel, normalizePreferredPosition } from '../lib/teamAssignment';
+import { calculateCompetitiveStandings } from '../lib/competitiveResults';
 
 type MyStatus = 'none' | 'joined' | 'waitlisted' | 'pending_confirm';
 
@@ -21,6 +23,27 @@ function avgRating(players: { rating: number }[]) {
   }
 
   return players.reduce((sum, player) => sum + player.rating, 0) / players.length;
+}
+
+function teamColorClassName(color: TeamColor) {
+  if (color === 'blue') {
+    return 'bg-blue-500';
+  }
+
+  if (color === 'yellow') {
+    return 'bg-yellow-400';
+  }
+
+  if (color === 'red') {
+    return 'bg-red-500';
+  }
+
+  return 'bg-green-500';
+}
+
+function formatRankLabel(rank: number, lang: 'he' | 'en') {
+  const roundedRank = Number.isInteger(rank) ? `${rank}` : rank.toFixed(1);
+  return lang === 'he' ? `מקום ${roundedRank}` : `Place ${roundedRank}`;
 }
 
 export default function LobbyDetailLive() {
@@ -34,7 +57,17 @@ export default function LobbyDetailLive() {
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [contributions, setContributions] = useState<{ profileId: string; type: ContributionType }[]>([]);
+  const [teams, setTeams] = useState<LobbyTeamAssignment[]>([]);
   const [distancePreference, setDistancePreference] = useState(() => loadSessionDistancePreference());
+  const [generatingTeams, setGeneratingTeams] = useState(false);
+  const [selectedSwapPlayer, setSelectedSwapPlayer] = useState<{ profileId: string; teamId: string } | null>(null);
+  const [swappingTeams, setSwappingTeams] = useState(false);
+  const [lobbyResult, setLobbyResult] = useState<LobbyResultSummary | null>(null);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [resultWins, setResultWins] = useState<Record<string, number>>({});
+  const [resultNotes, setResultNotes] = useState('');
+  const [submittingResult, setSubmittingResult] = useState(false);
+  const [resultModalDismissed, setResultModalDismissed] = useState(false);
 
   async function loadLobby() {
     if (!id) {
@@ -46,12 +79,18 @@ export default function LobbyDetailLive() {
     try {
       setLoading(true);
       setError('');
-      const [nextLobby, nextContributions] = await Promise.all([
+      const [nextLobby, nextContributions, nextTeams, nextResult] = await Promise.all([
         fetchLobbyById(id),
         fetchContributions(id),
+        fetchLobbyTeams(id),
+        fetchLobbyResult(id),
       ]);
       setLobby(nextLobby);
       setContributions(nextContributions);
+      setTeams(nextTeams);
+      setLobbyResult(nextResult);
+      setResultNotes(nextResult?.notes ?? '');
+      setResultModalDismissed(false);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Failed to load game');
     } finally {
@@ -66,6 +105,32 @@ export default function LobbyDetailLive() {
   useEffect(() => {
     setDistancePreference(loadSessionDistancePreference());
   }, []);
+
+  const canSubmitResult =
+    currentUser?.id === lobby?.createdBy
+    && lobby?.gameType === 'competitive'
+    && (lobby ? new Date(lobby.datetime) < new Date() : false)
+    && teams.length > 0
+    && lobbyResult == null;
+
+  useEffect(() => {
+    if (!showResultModal || teams.length === 0) {
+      return;
+    }
+
+    setResultWins((current) => {
+      const nextEntries = teams.map((assignment) => [assignment.team.id, current[assignment.team.id] ?? 0] as const);
+      return Object.fromEntries(nextEntries);
+    });
+  }, [showResultModal, teams]);
+
+  useEffect(() => {
+    if (!canSubmitResult || showResultModal || resultModalDismissed) {
+      return;
+    }
+
+    setShowResultModal(true);
+  }, [canSubmitResult, resultModalDismissed, showResultModal]);
 
   if (!id) {
     return <Navigate to="/" replace />;
@@ -119,9 +184,25 @@ export default function LobbyDetailLive() {
   const ballContributors = new Set(contributions.filter((c) => c.type === 'ball').map((c) => c.profileId));
   const speakerContributors = new Set(contributions.filter((c) => c.type === 'speaker').map((c) => c.profileId));
   const gameHasPassed = new Date(resolvedLobby.datetime) < new Date();
-  const ratingWindowOpen = isCompetitive && gameHasPassed && (new Date().getTime() - new Date(resolvedLobby.datetime).getTime()) < 24 * 60 * 60 * 1000;
-  const iAmParticipant = currentUser ? resolvedLobby.players.some((p) => p.id === currentUser.id) : false;
-  const canRate = ratingWindowOpen && iAmParticipant;
+  const hasMissingPreferredPosition = resolvedLobby.players.some((player) => !normalizePreferredPosition(player.position));
+  const canGenerateTeams =
+    isCreator
+    && isLobbyActive
+    && Boolean(resolvedLobby.numTeams && resolvedLobby.playersPerTeam)
+    && resolvedLobby.players.length === resolvedLobby.maxPlayers
+    && !hasMissingPreferredPosition
+    && teams.length === 0;
+  const resultPreview =
+    teams.length > 0
+      ? calculateCompetitiveStandings(
+          teams.map((assignment) => ({
+            teamId: assignment.team.id,
+            color: assignment.team.color,
+            teamNumber: assignment.team.teamNumber,
+            wins: resultWins[assignment.team.id] ?? 0,
+          })),
+        )
+      : [];
   const myWaitlistIndex = currentUser ? resolvedLobby.waitlist.findIndex((player) => player.id === currentUser.id) : -1;
   const isFirstWaitlisted = myWaitlistIndex === 0;
 
@@ -219,6 +300,91 @@ export default function LobbyDetailLive() {
     }
   }
 
+  async function handleGenerateTeams() {
+    if (!currentUser) {
+      return;
+    }
+
+    setGeneratingTeams(true);
+    setError('');
+    try {
+      const nextTeams = await generateLobbyTeams(lobbyId, currentUser.id);
+      setTeams(nextTeams);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Failed to generate teams');
+    } finally {
+      setGeneratingTeams(false);
+    }
+  }
+
+  async function handleSwapPlayers(targetProfileId: string, targetTeamId: string) {
+    if (!currentUser || !selectedSwapPlayer) {
+      return;
+    }
+
+    if (selectedSwapPlayer.profileId === targetProfileId) {
+      setSelectedSwapPlayer(null);
+      return;
+    }
+
+    if (selectedSwapPlayer.teamId === targetTeamId) {
+      setSelectedSwapPlayer({ profileId: targetProfileId, teamId: targetTeamId });
+      return;
+    }
+
+    setSwappingTeams(true);
+    setError('');
+    try {
+      const nextTeams = await swapLobbyTeamPlayers(
+        lobbyId,
+        currentUser.id,
+        selectedSwapPlayer.profileId,
+        targetProfileId,
+      );
+      setTeams(nextTeams);
+      setSelectedSwapPlayer(null);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Failed to swap players');
+    } finally {
+      setSwappingTeams(false);
+    }
+  }
+
+  function changeTeamWins(teamId: string, delta: number) {
+    setResultWins((current) => {
+      const nextValue = Math.max(0, (current[teamId] ?? 0) + delta);
+      return {
+        ...current,
+        [teamId]: nextValue,
+      };
+    });
+  }
+
+  async function handleSubmitResult() {
+    if (!currentUser) {
+      return;
+    }
+
+    setSubmittingResult(true);
+    setError('');
+    try {
+      const nextResult = await submitCompetitiveLobbyResult(
+        lobbyId,
+        currentUser.id,
+        resultWins,
+        resultNotes.trim().slice(0, 500) || undefined,
+      );
+      setLobbyResult(nextResult);
+      setResultNotes(nextResult.notes ?? '');
+      setShowResultModal(false);
+      await loadLobby();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Failed to submit result');
+    } finally {
+      setSubmittingResult(false);
+    }
+  }
+
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
@@ -266,6 +432,65 @@ export default function LobbyDetailLive() {
             >
               {t.lobby.deleteCancel}
             </button>
+          </div>
+        </div>
+      )}
+
+      {isCreator && (
+        <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-primary-800">
+                {lang === 'he' ? 'הרכבים ללובי' : 'Lobby lineups'}
+              </p>
+              <p className="mt-1 text-xs text-primary-700">
+                {teams.length > 0
+                  ? (lang === 'he' ? 'ההרכבים כבר ננעלו ונשלחה התראה לכל המשתתפים.' : 'Teams are locked and all participants were notified.')
+                  : canGenerateTeams
+                    ? (lang === 'he' ? 'הלובי מלא. אפשר ליצור עכשיו קבוצות מאוזנות ולשלוח לכולם שיבוץ.' : 'The lobby is full. You can create balanced teams now and notify everyone.')
+                    : (lang === 'he' ? 'כדי ליצור קבוצות צריך לובי מלא עם כל העמדות מוגדרות.' : 'Teams can be created once the lobby is full and every player has a preferred position.')}
+              </p>
+            </div>
+            <button
+              onClick={() => void handleGenerateTeams()}
+              disabled={!canGenerateTeams || generatingTeams}
+              className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+            >
+              {generatingTeams
+                ? (lang === 'he' ? 'יוצר הרכבים...' : 'Creating teams...')
+                : (lang === 'he' ? 'צור הרכבים' : 'Create teams')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isCreator && isCompetitive && teams.length > 0 && (
+        <div className={`mb-4 rounded-2xl border p-4 ${lobbyResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className={`text-sm font-semibold ${lobbyResult ? 'text-emerald-800' : 'text-amber-800'}`}>
+                {lang === 'he' ? 'תוצאות הלובי התחרותי' : 'Competitive lobby result'}
+              </p>
+              <p className={`mt-1 text-xs ${lobbyResult ? 'text-emerald-700' : 'text-amber-700'}`}>
+                {lobbyResult
+                  ? (lang === 'he' ? 'התוצאה נשמרה והנקודות כבר חולקו לשחקנים.' : 'The result was saved and points were already awarded.')
+                  : gameHasPassed
+                    ? (lang === 'he' ? 'הזינו כמה ניצחונות היו לכל קבוצה כדי לחלק נקודות.' : 'Enter the number of wins for each team to award points.')
+                    : (lang === 'he' ? 'אפשר יהיה להזין תוצאה אחרי שהמשחק יעבור.' : 'You will be able to submit the result after the game starts.')}
+              </p>
+            </div>
+            {!lobbyResult && (
+              <button
+                onClick={() => {
+                  setResultModalDismissed(false);
+                  setShowResultModal(true);
+                }}
+                disabled={!canSubmitResult}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+              >
+                {lang === 'he' ? 'הזן תוצאה' : 'Submit result'}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -370,6 +595,151 @@ export default function LobbyDetailLive() {
         )}
       </div>
 
+      {teams.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
+          <h2 className="font-semibold text-gray-900 mb-4">
+            {lang === 'he' ? 'הקבוצות שנקבעו' : 'Assigned teams'}
+          </h2>
+          {isCreator && (
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <p className="text-xs text-gray-500">
+                {selectedSwapPlayer
+                  ? (lang === 'he'
+                      ? 'בחרו עכשיו שחקן מקבוצה אחרת כדי להחליף ביניהם.'
+                      : 'Now choose a player from another team to swap them.')
+                  : (lang === 'he'
+                      ? 'כמארגן אפשר לבחור שחקן ואז שחקן מקבוצה אחרת כדי להחליף ביניהם.'
+                      : 'As the organizer, select a player and then a player from another team to swap them.')}
+              </p>
+              {selectedSwapPlayer && (
+                <button
+                  onClick={() => setSelectedSwapPlayer(null)}
+                  disabled={swappingTeams}
+                  className="px-3 py-1.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 text-sm font-medium text-gray-700 transition-colors"
+                >
+                  {lang === 'he' ? 'בטל בחירה' : 'Cancel selection'}
+                </button>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {teams.map((assignment) => (
+              <div key={assignment.team.id} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block h-3 w-3 rounded-full ${teamColorClassName(assignment.team.color)}`} />
+                    <p className="font-semibold text-gray-900">
+                      {lang === 'he'
+                        ? `קבוצה ${getTeamColorLabel(assignment.team.color, lang)}`
+                        : `${getTeamColorLabel(assignment.team.color, lang)} Team`}
+                    </p>
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    {assignment.players.length} {lang === 'he' ? 'שחקנים' : 'players'}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {assignment.players.map((player) => (
+                    <button
+                      key={player.id}
+                      type="button"
+                      disabled={!isCreator || swappingTeams}
+                      onClick={() => {
+                        if (!isCreator) {
+                          return;
+                        }
+
+                        if (
+                          selectedSwapPlayer
+                          && selectedSwapPlayer.profileId === player.id
+                          && selectedSwapPlayer.teamId === assignment.team.id
+                        ) {
+                          setSelectedSwapPlayer(null);
+                          return;
+                        }
+
+                        if (!selectedSwapPlayer) {
+                          setSelectedSwapPlayer({ profileId: player.id, teamId: assignment.team.id });
+                          return;
+                        }
+
+                        void handleSwapPlayers(player.id, assignment.team.id);
+                      }}
+                      className={`flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2 text-start transition-colors ${
+                        isCreator ? 'hover:bg-primary-50 disabled:hover:bg-white' : ''
+                      } ${
+                        selectedSwapPlayer?.profileId === player.id && selectedSwapPlayer.teamId === assignment.team.id
+                          ? 'ring-2 ring-primary-300 bg-primary-50'
+                          : ''
+                      }`}
+                    >
+                      {player.photoUrl ? (
+                        <img src={player.photoUrl} alt={player.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <div className={`w-8 h-8 rounded-full ${player.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                          {player.initials}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">{player.name}</p>
+                        {player.position && (
+                          <p className="text-xs text-gray-400">{getPreferredPositionLabel(player.position, lang)}</p>
+                        )}
+                      </div>
+                      {selectedSwapPlayer?.profileId === player.id && selectedSwapPlayer.teamId === assignment.team.id && (
+                        <span className="text-[11px] font-semibold text-primary-700">
+                          {lang === 'he' ? 'נבחר' : 'Selected'}
+                        </span>
+                      )}
+                      <RatingDisplay rating={player.rating} size="sm" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {lobbyResult && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
+          <h2 className="font-semibold text-gray-900 mb-4">
+            {lang === 'he' ? 'תוצאות ונקודות' : 'Results and points'}
+          </h2>
+          {lobbyResult.notes && (
+            <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
+              <p className="text-xs font-semibold text-amber-800">
+                {lang === 'he' ? 'הערת מארגן' : 'Organizer note'}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">{lobbyResult.notes}</p>
+            </div>
+          )}
+          <div className="space-y-3">
+            {lobbyResult.teamResults.map((teamResult) => (
+              <div key={teamResult.lobbyTeamId} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span className={`inline-block h-3 w-3 rounded-full ${teamColorClassName(teamResult.teamColor)}`} />
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {lang === 'he'
+                        ? `קבוצה ${getTeamColorLabel(teamResult.teamColor, lang)}`
+                        : `${getTeamColorLabel(teamResult.teamColor, lang)} Team`}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {formatRankLabel(teamResult.rank, lang)} • {teamResult.wins} {lang === 'he' ? 'ניצחונות' : 'wins'}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-end">
+                  <p className="text-sm font-semibold text-primary-700">+{teamResult.awardedPoints}</p>
+                  <p className="text-xs text-gray-500">{lang === 'he' ? 'נקודות לשחקן' : 'points per player'}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {hasCoords && (
         <LocationPreviewMap
           latitude={resolvedLobby.latitude!}
@@ -425,7 +795,7 @@ export default function LobbyDetailLive() {
                     <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">{lang === 'he' ? 'אני' : 'me'}</span>
                   )}
                 </div>
-                {player.position && <p className="text-xs text-gray-400">{player.position}</p>}
+                {player.position && <p className="text-xs text-gray-400">{getPreferredPositionLabel(player.position, lang)}</p>}
               </div>
               <div className="shrink-0">
                 <RatingDisplay rating={player.rating} size="sm" />
@@ -459,17 +829,135 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+      {showResultModal && canSubmitResult && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {lang === 'he' ? 'דיווח תוצאות הלובי' : 'Report lobby results'}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {lang === 'he'
+                  ? 'הזינו כמה ניצחונות היו לכל קבוצה. הדירוג והנקודות יחושבו אוטומטית.'
+                  : 'Enter the number of wins for each team. Ranking and points will be calculated automatically.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowResultModal(false);
+                setResultModalDismissed(true);
+              }}
+              disabled={submittingResult}
+              className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-60"
+            >
+              {lang === 'he' ? 'סגור' : 'Close'}
+            </button>
+          </div>
 
-      {canRate && (
-        <button
-          onClick={() => navigate(`/lobby/${lobbyId}/rate`)}
-          className="w-full py-4 rounded-2xl font-semibold text-base bg-amber-500 hover:bg-amber-600 text-white transition-colors shadow-md hover:shadow-lg mb-4 flex items-center justify-center gap-2"
-        >
-          <Star size={18} />
-          {lang === 'he' ? 'דרג את המשחק' : 'Rate the game'}
-        </button>
+          <div className="space-y-3">
+            {teams.map((assignment) => {
+              const preview = resultPreview.find((item) => item.teamId === assignment.team.id);
+
+              return (
+                <div key={assignment.team.id} className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className={`inline-block h-3 w-3 rounded-full ${teamColorClassName(assignment.team.color)}`} />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {lang === 'he'
+                            ? `קבוצה ${getTeamColorLabel(assignment.team.color, lang)}`
+                            : `${getTeamColorLabel(assignment.team.color, lang)} Team`}
+                        </p>
+                        {preview && (
+                          <p className="text-xs text-gray-500">
+                            {formatRankLabel(preview.rank, lang)} • +{preview.awardedPoints}{' '}
+                            {lang === 'he' ? 'נקודות לשחקן' : 'points per player'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => changeTeamWins(assignment.team.id, -1)}
+                        disabled={submittingResult || (resultWins[assignment.team.id] ?? 0) <= 0}
+                        className="h-10 w-10 rounded-xl border border-gray-200 bg-white text-lg font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label={lang === 'he' ? 'הפחת ניצחונות' : 'Decrease wins'}
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min={0}
+                        value={resultWins[assignment.team.id] ?? 0}
+                        onChange={(event) => {
+                          const nextValue = Number.parseInt(event.target.value || '0', 10);
+                          setResultWins((current) => ({
+                            ...current,
+                            [assignment.team.id]: Number.isNaN(nextValue) ? 0 : Math.max(0, nextValue),
+                          }));
+                        }}
+                        disabled={submittingResult}
+                        className="h-10 w-20 rounded-xl border border-gray-200 bg-white px-3 text-center text-sm font-semibold text-gray-900 outline-none transition-colors focus:border-primary-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => changeTeamWins(assignment.team.id, 1)}
+                        disabled={submittingResult}
+                        className="h-10 w-10 rounded-xl border border-gray-200 bg-white text-lg font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+                        aria-label={lang === 'he' ? 'הגדל ניצחונות' : 'Increase wins'}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label htmlFor="result-notes" className="text-sm font-medium text-gray-700">
+                {lang === 'he' ? 'הערת מארגן אופציונלית' : 'Optional organizer note'}
+              </label>
+              <span className="text-xs text-gray-400">{resultNotes.length}/500</span>
+            </div>
+            <textarea
+              id="result-notes"
+              value={resultNotes}
+              onChange={(event) => setResultNotes(event.target.value.slice(0, 500))}
+              disabled={submittingResult}
+              rows={3}
+              placeholder={lang === 'he' ? 'למשל: היה משחק צמוד מאוד, כל הקבוצות התחלפו יפה.' : 'For example: very close game, all teams rotated well.'}
+              className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition-colors focus:border-primary-400 disabled:opacity-60"
+            />
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-gray-500">
+              {lang === 'he'
+                ? 'אחרי השמירה, כל השחקנים בלובי יקבלו את הנקודות של הקבוצה שלהם.'
+                : 'Once saved, all players in the lobby will receive their team points.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleSubmitResult()}
+              disabled={submittingResult}
+              className="rounded-2xl bg-amber-500 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submittingResult
+                ? (lang === 'he' ? 'שומר...' : 'Saving...')
+                : (lang === 'he' ? 'שמור תוצאה וחלק נקודות' : 'Save result and award points')}
+            </button>
+          </div>
+        </div>
       )}
+
+      {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
       {myStatus === 'pending_confirm' && isLobbyActive && (
         <div className="bg-green-50 border border-green-200 rounded-2xl p-5 mb-4 text-center">

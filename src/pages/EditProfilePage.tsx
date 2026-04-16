@@ -10,8 +10,8 @@ import GooglePlacesAutocomplete, { type PlaceResult } from '../components/Google
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
 import { formatLocationLabel } from '../utils/location';
 
-const POSITIONS_HE = ['חלוץ', 'קישור', 'בלם', 'שוער', 'אגף', 'כל עמדה'];
-const POSITIONS_EN = ['Striker', 'Midfielder', 'Defender', 'Goalkeeper', 'Winger', 'Any'];
+const POSITIONS_HE = ['שוער', 'הגנה', 'קישור', 'התקפה'];
+const POSITIONS_EN = ['Goalkeeper', 'Defense', 'Midfield', 'Attack'];
 
 export default function EditProfilePage() {
   const navigate = useNavigate();
@@ -82,6 +82,10 @@ export default function EditProfilePage() {
       setError(lang === 'he' ? 'שם חייב להכיל לפחות 2 תווים' : 'Name must be at least 2 characters');
       return;
     }
+    if (!form.position) {
+      setError(lang === 'he' ? 'בחר עמדה מועדפת' : 'Choose a preferred position');
+      return;
+    }
     setSubmitting(true);
     setError('');
 
@@ -96,7 +100,7 @@ export default function EditProfilePage() {
       await updateProfile({
         profileId: userId,
         name: form.name.trim(),
-        position: form.position || undefined,
+        position: form.position,
         bio: form.bio || undefined,
         gender: form.gender || undefined,
         photoUrl,
@@ -174,8 +178,9 @@ export default function EditProfilePage() {
               ))}
             </div>
           </Field>
-          <Field label={lang === 'he' ? 'עמדה (אופציונלי)' : 'Position (optional)'}>
+          <Field label={lang === 'he' ? 'עמדה מועדפת' : 'Preferred position'}>
             <select value={form.position} onChange={setField('position')}
+              required
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-300">
               <option value="">{lang === 'he' ? 'בחר עמדה' : 'Select position'}</option>
               {positions.map((p) => <option key={p} value={p}>{p}</option>)}

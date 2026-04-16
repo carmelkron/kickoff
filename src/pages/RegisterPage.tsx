@@ -20,8 +20,8 @@ const AVATAR_COLORS = [
   { value: 'bg-indigo-500', label: 'Indigo' },
 ];
 
-const POSITIONS_HE = ['חלוץ', 'קישור', 'בלם', 'שוער', 'אגף', 'כל עמדה'];
-const POSITIONS_EN = ['Striker', 'Midfielder', 'Defender', 'Goalkeeper', 'Winger', 'Any'];
+const POSITIONS_HE = ['שוער', 'הגנה', 'קישור', 'התקפה'];
+const POSITIONS_EN = ['Goalkeeper', 'Defense', 'Midfield', 'Attack'];
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -96,6 +96,7 @@ export default function RegisterPage() {
       email: form.email,
       password: form.password,
       confirm: form.confirm,
+      position: form.position,
       bio: form.bio,
       photoFile,
     });
@@ -112,7 +113,7 @@ export default function RegisterPage() {
       password: form.password,
       initials: getInitials(form.name),
       avatarColor: form.avatarColor,
-      position: form.position || undefined,
+      position: form.position,
       bio: form.bio || undefined,
       gender: form.gender || undefined,
       photoFile: photoFile ?? undefined,
@@ -243,10 +244,11 @@ export default function RegisterPage() {
               ))}
             </div>
           </Field>
-          <Field label={lang === 'he' ? 'עמדה (אופציונלי)' : 'Position (optional)'}>
+          <Field label={lang === 'he' ? 'עמדה מועדפת' : 'Preferred position'}>
             <select
               value={form.position}
               onChange={setField('position')}
+              required
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-300"
             >
               <option value="">{lang === 'he' ? 'בחר עמדה' : 'Select position'}</option>

@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Camera } from 'lucide-react';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useLang } from '../contexts/LanguageContext';
+import { validateRegisterDraft } from '../lib/validation';
 
 const AVATAR_COLORS = [
   { value: 'bg-blue-500', label: 'Blue' },
@@ -15,8 +16,8 @@ const AVATAR_COLORS = [
   { value: 'bg-indigo-500', label: 'Indigo' },
 ];
 
-const POSITIONS_HE = ['חלוץ', 'קישור', 'בלם', 'שוער', 'אגף', 'כל עמדה'];
-const POSITIONS_EN = ['Striker', 'Midfielder', 'Defender', 'Goalkeeper', 'Winger', 'Any'];
+const POSITIONS_HE = ['שוער', 'הגנה', 'קישור', 'התקפה'];
+const POSITIONS_EN = ['Goalkeeper', 'Defense', 'Midfield', 'Attack'];
 
 export default function RegisterLive() {
   const navigate = useNavigate();
@@ -81,13 +82,18 @@ export default function RegisterLive() {
     event.preventDefault();
     setError('');
 
-    if (form.password !== form.confirm) {
-      setError(lang === 'he' ? 'הסיסמאות אינן תואמות' : 'Passwords do not match');
-      return;
-    }
+    const validationErrors = validateRegisterDraft({
+      name: form.name,
+      email: form.email,
+      password: form.password,
+      confirm: form.confirm,
+      position: form.position,
+      bio: form.bio,
+      photoFile,
+    });
 
-    if (form.password.length < 6) {
-      setError(lang === 'he' ? 'הסיסמה חייבת להכיל לפחות 6 תווים' : 'Password must be at least 6 characters');
+    if (validationErrors.length > 0) {
+      setError(validationErrors[0]);
       return;
     }
 
@@ -98,7 +104,7 @@ export default function RegisterLive() {
       password: form.password,
       initials: getInitials(form.name),
       avatarColor: form.avatarColor,
-      position: form.position || undefined,
+      position: form.position,
       bio: form.bio || undefined,
       photoFile: photoFile ?? undefined,
     });
@@ -214,10 +220,11 @@ export default function RegisterLive() {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
-          <Field label={lang === 'he' ? 'עמדה (אופציונלי)' : 'Position (optional)'}>
+          <Field label={lang === 'he' ? 'עמדה מועדפת' : 'Preferred position'}>
             <select
               value={form.position}
               onChange={setField('position')}
+              required
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-300"
             >
               <option value="">{lang === 'he' ? 'בחר עמדה' : 'Select position'}</option>
