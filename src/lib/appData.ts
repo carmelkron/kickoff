@@ -702,9 +702,54 @@ export async function fetchLobbies(): Promise<Lobby[]> {
   }).filter((lobby) => lobby.status !== 'deleted');
 }
 
-export async function fetchLobbyById(id: string): Promise<Lobby | null> {
+async function hasLobbyShareAccess(lobbyId: string, shareToken?: string | null) {
+  if (!shareToken) {
+    return false;
+  }
+
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.rpc('has_lobby_share_access', {
+    target_lobby_id: lobbyId,
+    provided_share_token: shareToken,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data === true;
+}
+
+export async function fetchLobbyShareToken(lobbyId: string): Promise<string | null> {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase.rpc('get_lobby_share_token', {
+    target_lobby_id: lobbyId,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return typeof data === 'string' ? data : null;
+}
+
+export async function fetchLobbyById(id: string, options?: { shareToken?: string | null }): Promise<Lobby | null> {
   const lobbies = await fetchLobbies();
-  return lobbies.find((lobby) => lobby.id === id) ?? null;
+  const lobby = lobbies.find((item) => item.id === id) ?? null;
+
+  if (!lobby || lobby.accessType !== 'locked' || lobby.viewerHasAccess) {
+    return lobby;
+  }
+
+  const shareAccess = await hasLobbyShareAccess(id, options?.shareToken);
+  if (!shareAccess) {
+    return lobby;
+  }
+
+  return {
+    ...lobby,
+    viewerHasAccess: true,
+  };
 }
 
 export async function fetchLobbyInvites(lobbyId: string): Promise<LobbyInvite[]> {
@@ -1793,7 +1838,12 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
   return id;
 }
 
-export async function upsertLobbyMembership(lobbyId: string, profileId: string, status: MembershipRow['status']) {
+export async function upsertLobbyMembership(
+  lobbyId: string,
+  profileId: string,
+  status: MembershipRow['status'],
+  options?: { shareToken?: string | null },
+) {
   const supabase = requireSupabase();
   let resolvedProfile: Player | null = null;
   let wasJoinedBefore = false;
@@ -1832,8 +1882,9 @@ export async function upsertLobbyMembership(lobbyId: string, profileId: string, 
       }
 
       const isInvited = Boolean(inviteRow && inviteRow.status !== 'revoked');
-      if (!hasFriendInside && !isInvited) {
-        throw new Error('This locked lobby is available only to invited players or friends of current participants.');
+      const shareAccess = await hasLobbyShareAccess(lobbyId, options?.shareToken);
+      if (!hasFriendInside && !isInvited && !shareAccess) {
+        throw new Error('This locked lobby is available only to invited players, players with the share link, or friends of current participants.');
       }
 
       shouldMarkInviteAccepted = Boolean(inviteRow);

@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, LoaderCircle, Lock, MapPin, Pencil, ShieldCheck, Trash2, Trophy, Users } from 'lucide-react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, LoaderCircle, Lock, MapPin, Pencil, Share2, ShieldCheck, Trash2, Trophy, Users } from 'lucide-react';
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { approveLobbyJoinRequest, assignLobbyOrganizer, createLobbyInvite, declineLobbyJoinRequest, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyJoinRequests, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, removeLobbyOrganizer, requestLobbyAccess, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
+import { approveLobbyJoinRequest, assignLobbyOrganizer, createLobbyInvite, declineLobbyJoinRequest, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyJoinRequests, fetchLobbyResult, fetchLobbyShareToken, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, removeLobbyOrganizer, requestLobbyAccess, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
 import { canSubmitLobbyResult, getLobbyResultReminderTime } from '../lib/lobbyResultReminders';
 import { canManageLobby } from '../lib/lobbyRoles';
 import { getJoinLobbyError, getJoinLobbyTargetStatus } from '../lib/validation';
@@ -52,6 +52,7 @@ function formatRankLabel(rank: number, lang: 'he' | 'en') {
 export default function LobbyDetailLive() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, lang } = useLang();
   const { currentUser, getAllUsers } = useAuth();
   const [lobby, setLobby] = useState<Lobby | null>(null);
@@ -75,6 +76,11 @@ export default function LobbyDetailLive() {
   const [submittingResult, setSubmittingResult] = useState(false);
   const [resultModalDismissed, setResultModalDismissed] = useState(false);
   const [invitingProfileId, setInvitingProfileId] = useState('');
+  const [shareLink, setShareLink] = useState('');
+  const [shareFeedback, setShareFeedback] = useState('');
+  const [sharingLobby, setSharingLobby] = useState(false);
+
+  const shareTokenFromUrl = new URLSearchParams(location.search).get('share');
 
   async function loadLobby() {
     if (!id) {
@@ -87,7 +93,7 @@ export default function LobbyDetailLive() {
       setLoading(true);
       setError('');
       const [nextLobby, nextContributions, nextTeams, nextResult] = await Promise.all([
-        fetchLobbyById(id),
+        fetchLobbyById(id, { shareToken: shareTokenFromUrl }),
         fetchContributions(id),
         fetchLobbyTeams(id),
         fetchLobbyResult(id),
@@ -108,6 +114,17 @@ export default function LobbyDetailLive() {
       setLobbyResult(nextResult);
       setResultNotes(nextResult?.notes ?? '');
       setResultModalDismissed(false);
+      if (nextLobby && currentUser && canManageLobby(nextLobby, currentUser.id)) {
+        const nextShareToken = await fetchLobbyShareToken(id);
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        setShareLink(
+          nextShareToken && origin
+            ? `${origin}/lobby/${id}?share=${encodeURIComponent(nextShareToken)}`
+            : '',
+        );
+      } else {
+        setShareLink('');
+      }
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Failed to load game');
     } finally {
@@ -117,7 +134,7 @@ export default function LobbyDetailLive() {
 
   useEffect(() => {
     void loadLobby();
-  }, [id, currentUser?.id]);
+  }, [id, currentUser?.id, location.search]);
 
   useEffect(() => {
     setDistancePreference(loadSessionDistancePreference());
@@ -337,8 +354,46 @@ export default function LobbyDetailLive() {
     }
 
     void runMembershipAction(() =>
-      upsertLobbyMembership(lobbyId, currentUser.id, getJoinLobbyTargetStatus(resolvedLobby)),
+      upsertLobbyMembership(
+        lobbyId,
+        currentUser.id,
+        getJoinLobbyTargetStatus(resolvedLobby),
+        { shareToken: shareTokenFromUrl },
+      ),
     );
+  }
+
+  async function handleShareLobby() {
+    if (!shareLink) {
+      setShareFeedback(lang === 'he' ? 'לא הצלחתי להכין קישור שיתופי כרגע.' : 'I could not prepare a share link right now.');
+      return;
+    }
+
+    setSharingLobby(true);
+    setShareFeedback('');
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({
+          title: resolvedLobby.title,
+          text: resolvedLobby.title,
+          url: shareLink,
+        });
+        setShareFeedback(lang === 'he' ? 'הקישור השיתופי מוכן לשליחה.' : 'The share link is ready to send.');
+        return;
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareLink);
+        setShareFeedback(lang === 'he' ? 'הקישור הועתק ללוח.' : 'The link was copied to the clipboard.');
+        return;
+      }
+
+      setShareFeedback(shareLink);
+    } catch (nextError) {
+      setShareFeedback(nextError instanceof Error ? nextError.message : (lang === 'he' ? 'שיתוף הלובי נכשל.' : 'Failed to share the lobby.'));
+    } finally {
+      setSharingLobby(false);
+    }
   }
 
   function handleLeave() {
@@ -582,26 +637,43 @@ export default function LobbyDetailLive() {
           <ChevronLeft size={16} />
           {t.lobby.back}
         </button>
-        {isCreator && (
+        {canManageCurrentLobby && (
           <div className="flex items-center gap-2">
             <button
+              onClick={() => void handleShareLobby()}
+              disabled={sharingLobby || !shareLink}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-60 rounded-xl transition-colors"
+            >
+              <Share2 size={14} />
+              {lang === 'he' ? 'שתף קישור' : 'Share link'}
+            </button>
+            <button
               onClick={() => navigate(`/lobby/${lobbyId}/edit`)}
+              disabled={!isCreator}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-600 border border-primary-200 hover:bg-primary-50 rounded-xl transition-colors"
             >
               <Pencil size={14} />
               {lang === 'he' ? 'ערוך' : 'Edit'}
             </button>
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={saving}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-60 rounded-xl transition-colors"
-            >
-              <Trash2 size={14} />
-              {t.lobby.delete}
-            </button>
+            {isCreator && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={saving}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-60 rounded-xl transition-colors"
+              >
+                <Trash2 size={14} />
+                {t.lobby.delete}
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {shareFeedback && canManageCurrentLobby && (
+        <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-800">
+          {shareFeedback}
+        </div>
+      )}
 
       {isCreator && showDeleteConfirm && (
         <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4">
@@ -639,7 +711,7 @@ export default function LobbyDetailLive() {
               <p className="mt-1 text-sm text-gray-600">
                 {lang === 'he'
                   ? 'כולם יכולים לראות את הלובי. כדי להיכנס צריך גישה: משתתפים, מוזמנים, חברים של מי שכבר בפנים, או אישור מהמארגן.'
-                  : 'Everyone can view this lobby. Entering requires access: participants, invited players, friends of current participants, or organizer approval.'}
+                  : 'Everyone can view this lobby. Entering requires access: participants, invited players, people with the share link, friends of current participants, or organizer approval.'}
               </p>
               {(resolvedLobby.viewerIsInvited || resolvedLobby.viewerHasFriendInside) && (
                 <p className="mt-2 text-xs font-medium text-primary-700">

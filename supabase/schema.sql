@@ -57,6 +57,12 @@ create table if not exists public.lobbies (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.lobby_share_links (
+  lobby_id text primary key references public.lobbies (id) on delete cascade,
+  share_token uuid not null unique default gen_random_uuid(),
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.lobby_memberships (
   lobby_id text not null references public.lobbies (id) on delete cascade,
   profile_id text not null references public.profiles (id) on delete cascade,
@@ -274,6 +280,7 @@ end $$;
 
 alter table public.profiles enable row level security;
 alter table public.lobbies enable row level security;
+alter table public.lobby_share_links enable row level security;
 alter table public.lobby_memberships enable row level security;
 alter table public.lobby_invites enable row level security;
 alter table public.lobby_join_requests enable row level security;
@@ -298,6 +305,13 @@ create policy "lobbies are readable by everyone"
 on public.lobbies
 for select
 using (true);
+
+drop policy if exists "lobby share links direct access denied" on public.lobby_share_links;
+create policy "lobby share links direct access denied"
+on public.lobby_share_links
+for all
+using (false)
+with check (false);
 
 drop policy if exists "memberships are readable by everyone" on public.lobby_memberships;
 create policy "memberships are readable by everyone"
@@ -1165,6 +1179,9 @@ with check (
   )
 );
 
+grant execute on function public.get_lobby_share_token(text) to authenticated;
+grant execute on function public.has_lobby_share_access(text, text) to anon, authenticated;
+
 create table if not exists public.lobby_organizers (
   lobby_id text not null references public.lobbies (id) on delete cascade,
   profile_id text not null references public.profiles (id) on delete cascade,
@@ -1174,6 +1191,33 @@ create table if not exists public.lobby_organizers (
 
 create index if not exists lobby_organizers_lobby_id_idx on public.lobby_organizers (lobby_id);
 create index if not exists lobby_organizers_profile_id_idx on public.lobby_organizers (profile_id);
+
+insert into public.lobby_share_links (lobby_id)
+select l.id
+from public.lobbies l
+left join public.lobby_share_links lsl on lsl.lobby_id = l.id
+where lsl.lobby_id is null;
+
+create or replace function public.ensure_lobby_share_link()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.lobby_share_links (lobby_id)
+  values (new.id)
+  on conflict (lobby_id) do nothing;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists ensure_lobby_share_link_after_lobby_insert on public.lobbies;
+create trigger ensure_lobby_share_link_after_lobby_insert
+after insert on public.lobbies
+for each row
+execute function public.ensure_lobby_share_link();
 
 create or replace function public.is_lobby_manager(target_lobby_id text, target_profile_id text)
 returns boolean
@@ -1194,6 +1238,36 @@ as $$
      and lm.status = 'joined'
     where lo.lobby_id = target_lobby_id
       and lo.profile_id = target_profile_id
+  );
+$$;
+
+create or replace function public.get_lobby_share_token(target_lobby_id text)
+returns uuid
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select lsl.share_token
+  from public.lobby_share_links lsl
+  join public.profiles p on p.auth_user_id = auth.uid()
+  where lsl.lobby_id = target_lobby_id
+    and public.is_lobby_manager(target_lobby_id, p.id)
+  limit 1;
+$$;
+
+create or replace function public.has_lobby_share_access(target_lobby_id text, provided_share_token text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.lobby_share_links lsl
+    where lsl.lobby_id = target_lobby_id
+      and lsl.share_token::text = provided_share_token
   );
 $$;
 
