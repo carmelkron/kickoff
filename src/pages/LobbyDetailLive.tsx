@@ -215,6 +215,24 @@ export default function LobbyDetailLive() {
     t.common.tomorrow,
   );
   const resultSubmissionOpen = canSubmitLobbyResult(resolvedLobby.datetime);
+  const resultSubmittedAtStr = lobbyResult
+    ? formatDateTime(lobbyResult.submittedAt, lang, t.common.today, t.common.tomorrow)
+    : '';
+  const resultReporterText = lobbyResult
+    ? (
+        lobbyResult.submittedByProfileName
+          ? (
+              lang === 'he'
+                ? `דווח על ידי ${lobbyResult.submittedByProfileName} ב-${resultSubmittedAtStr}`
+                : `Reported by ${lobbyResult.submittedByProfileName} on ${resultSubmittedAtStr}`
+            )
+          : (
+              lang === 'he'
+                ? `דווח ב-${resultSubmittedAtStr}`
+                : `Reported on ${resultSubmittedAtStr}`
+            )
+      )
+    : '';
   const hasMissingPreferredPosition = resolvedLobby.players.some((player) => !normalizePreferredPosition(player.position));
   const canGenerateTeams =
     canManageCurrentLobby
@@ -505,7 +523,19 @@ export default function LobbyDetailLive() {
       setShowResultModal(false);
       await loadLobby();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Failed to submit result');
+      const nextMessage = nextError instanceof Error ? nextError.message : 'Failed to submit result';
+      if (nextMessage === 'Another organizer already submitted the result for this lobby.') {
+        await loadLobby();
+        setShowResultModal(false);
+        setResultModalDismissed(false);
+        setError(
+          lang === 'he'
+            ? 'מארגן אחר כבר דיווח את התוצאה. רעננו עבורך את התוצאה השמורה.'
+            : 'Another organizer already submitted the result. I refreshed the saved result for you.',
+        );
+      } else {
+        setError(nextMessage);
+      }
     } finally {
       setSubmittingResult(false);
     }
@@ -905,6 +935,11 @@ export default function LobbyDetailLive() {
                           : `You will be able to submit the result about two hours after kickoff (${resultReminderDateStr}).`
                       )}
               </p>
+              {lobbyResult && (
+                <p className="mt-1 text-xs text-emerald-700">
+                  {resultReporterText}
+                </p>
+              )}
             </div>
             {!lobbyResult && (
               <button
@@ -1166,9 +1201,14 @@ export default function LobbyDetailLive() {
 
       {lobbyResult && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
-          <h2 className="font-semibold text-gray-900 mb-4">
-            {lang === 'he' ? 'תוצאות ונקודות' : 'Results and points'}
-          </h2>
+          <div className="mb-4">
+            <h2 className="font-semibold text-gray-900">
+              {lang === 'he' ? 'תוצאות ונקודות' : 'Results and points'}
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              {resultReporterText}
+            </p>
+          </div>
           {myTeamAssignment && myTeamResult && (
             <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-4">
               <div className="flex items-start justify-between gap-3">

@@ -135,6 +135,7 @@ export interface LobbyTeamStanding extends LobbyTeamResult {
 export interface LobbyResultSummary {
   lobbyId: string;
   submittedByProfileId: string;
+  submittedByProfileName?: string;
   submittedAt: string;
   notes?: string;
   teamResults: LobbyTeamStanding[];

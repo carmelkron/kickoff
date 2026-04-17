@@ -106,6 +106,19 @@ function isMissingLobbyOrganizersTableError(error: unknown) {
   );
 }
 
+function isDuplicateLobbyResultError(error: unknown) {
+  const text = getErrorText(error).toLowerCase();
+  return (
+    text.includes('duplicate key')
+    || text.includes('23505')
+    || text.includes('already exists')
+  ) && (
+    text.includes('lobby_results')
+    || text.includes('pkey')
+    || text.includes('primary')
+  );
+}
+
 type ProfileRow = {
   id: string;
   email: string | null;
@@ -1249,7 +1262,7 @@ export async function fetchLobbyResult(lobbyId: string): Promise<LobbyResultSumm
     return null;
   }
 
-  const [teamRowsResult, teamResultsResult] = await Promise.all([
+  const [teamRowsResult, teamResultsResult, submittedByProfileResult] = await Promise.all([
     supabase
       .from('lobby_teams')
       .select('id, lobby_id, color, team_number, locked_at')
@@ -1258,6 +1271,11 @@ export async function fetchLobbyResult(lobbyId: string): Promise<LobbyResultSumm
       .from('lobby_team_results')
       .select('lobby_id, lobby_team_id, wins, rank, awarded_points')
       .eq('lobby_id', lobbyId),
+    supabase
+      .from('profiles')
+      .select('id, name')
+      .eq('id', (resultRow as LobbyResultRow).submitted_by_profile_id)
+      .maybeSingle(),
   ]);
 
   if (teamRowsResult.error) {
@@ -1266,6 +1284,9 @@ export async function fetchLobbyResult(lobbyId: string): Promise<LobbyResultSumm
 
   if (teamResultsResult.error) {
     throw teamResultsResult.error;
+  }
+  if (submittedByProfileResult.error) {
+    throw submittedByProfileResult.error;
   }
 
   const teamsById = new Map(((teamRowsResult.data ?? []) as LobbyTeamRow[]).map((row) => [row.id, row]));
@@ -1293,6 +1314,10 @@ export async function fetchLobbyResult(lobbyId: string): Promise<LobbyResultSumm
   return {
     lobbyId: result.lobby_id,
     submittedByProfileId: result.submitted_by_profile_id,
+    submittedByProfileName:
+      submittedByProfileResult.data && typeof submittedByProfileResult.data.name === 'string'
+        ? submittedByProfileResult.data.name
+        : undefined,
     submittedAt: result.submitted_at,
     notes: result.notes ?? undefined,
     teamResults,
@@ -1511,7 +1536,7 @@ export async function submitCompetitiveLobbyResult(
   ]);
 
   if (existingResult) {
-    throw new Error('Results were already submitted for this lobby.');
+    throw new Error('Another organizer already submitted the result for this lobby.');
   }
 
   if (teamAssignments.length < 2) {
@@ -1534,6 +1559,9 @@ export async function submitCompetitiveLobbyResult(
   });
 
   if (resultInsertError) {
+    if (isDuplicateLobbyResultError(resultInsertError)) {
+      throw new Error('Another organizer already submitted the result for this lobby.');
+    }
     throw resultInsertError;
   }
 
