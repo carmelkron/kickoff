@@ -121,7 +121,7 @@ describe('validateCreateLobbyDraft', () => {
     const errors = validateCreateLobbyDraft(
       {
         title: 'Hi',
-        address: '123',
+        address: '1',
         city: 'T',
         date: '2020-01-01',
         time: '10:00',

@@ -1,9 +1,19 @@
 import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry, LobbyAccessType, LobbyInvite, LobbyInviteStatus } from '../types';
-import { createCompetitiveResultNotifications, createFriendJoinedLobbyNotifications, createLobbyInviteNotification, createOrganizerSummaryNotification, createTeamAssignedNotifications, fetchAcceptedFriendIds } from './appNotifications';
+import {
+  createCompetitiveResultNotifications,
+  createFriendJoinedLobbyNotifications,
+  createLobbyInviteNotification,
+  createOrganizerSummaryNotification,
+  createTeamAssignedNotifications,
+  createWaitlistSpotOpenedNotifications,
+  fetchAcceptedFriendIds,
+  markWaitlistSpotNotificationsHandled,
+} from './appNotifications';
 import { requireSupabase } from './supabase';
 import { getJoinLobbyError, normalizeText, validateCreateLobbyPayload } from './validation';
 import { calculateCompetitiveStandings } from './competitiveResults';
 import { buildBalancedLobbyTeams } from './teamAssignment';
+import { buildWaitlistSyncPlan } from './waitlist';
 
 const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, gender_restriction, latitude, longitude';
 const LOBBY_SELECT_FIELDS_WITH_STATUS = `${LOBBY_SELECT_FIELDS}, status`;
@@ -39,6 +49,10 @@ function getErrorText(error: unknown) {
   }
 
   return '';
+}
+
+function isMissingAuthSessionError(error: unknown) {
+  return getErrorText(error).toLowerCase().includes('auth session missing');
 }
 
 function isMissingLobbyOptionalColumnError(error: unknown) {
@@ -94,7 +108,7 @@ type LobbyRow = {
 type MembershipRow = {
   lobby_id: string;
   profile_id: string;
-  status: 'joined' | 'waitlisted' | 'pending_confirm' | 'left';
+  status: 'joined' | 'waitlisted' | 'pending_confirm' | 'waitlisted_passed' | 'left';
   created_at?: string;
 };
 
@@ -165,6 +179,9 @@ async function fetchCurrentProfileId() {
   const supabase = requireSupabase();
   const { data, error } = await supabase.auth.getUser();
   if (error) {
+    if (isMissingAuthSessionError(error)) {
+      return null;
+    }
     throw error;
   }
 
@@ -227,6 +244,74 @@ async function fetchLobbyRows(): Promise<LobbyRow[]> {
     access_type: 'open',
     status: 'active',
   }));
+}
+
+async function fetchLobbyMembershipRows(lobbyId: string): Promise<MembershipRow[]> {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from('lobby_memberships')
+    .select('lobby_id, profile_id, status, created_at')
+    .eq('lobby_id', lobbyId);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as MembershipRow[];
+}
+
+async function updateMembershipStatus(
+  lobbyId: string,
+  profileId: string,
+  status: MembershipRow['status'],
+) {
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('lobby_memberships')
+    .update({ status })
+    .eq('lobby_id', lobbyId)
+    .eq('profile_id', profileId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function syncLobbyWaitlistState(lobbyId: string, actorProfileId: string) {
+  const lobby = await fetchLobbyById(lobbyId);
+  if (!lobby) {
+    return null;
+  }
+
+  const memberships = await fetchLobbyMembershipRows(lobbyId);
+  const plan = buildWaitlistSyncPlan(
+    memberships.map((membership) => ({
+      profileId: membership.profile_id,
+      status: membership.status,
+      createdAt: membership.created_at,
+    })),
+    lobby.maxPlayers,
+  );
+
+  for (const profileId of plan.resetToWaitlistedIds) {
+    await updateMembershipStatus(lobbyId, profileId, 'waitlisted');
+    await markWaitlistSpotNotificationsHandled(profileId, lobbyId);
+  }
+
+  for (const profileId of plan.promoteToPendingIds) {
+    await updateMembershipStatus(lobbyId, profileId, 'pending_confirm');
+  }
+
+  const nextLobby = await fetchLobbyById(lobbyId);
+  if (!nextLobby) {
+    return null;
+  }
+
+  if (plan.promoteToPendingIds.length > 0) {
+    await createWaitlistSpotOpenedNotifications(actorProfileId, nextLobby, plan.promoteToPendingIds);
+  }
+
+  return nextLobby;
 }
 
 function mapProfile(row: ProfileRow): Player {
@@ -367,7 +452,17 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       .filter((membership) => membership.status === 'joined')
       .map((membership) => membership.profile_id);
     const waitlistedProfileIds = memberships
-      .filter((membership) => membership.status === 'waitlisted')
+      .filter((membership) =>
+        membership.status === 'waitlisted'
+        || membership.status === 'pending_confirm'
+        || membership.status === 'waitlisted_passed',
+      )
+      .map((membership) => membership.profile_id);
+    const pendingWaitlistIds = memberships
+      .filter((membership) => membership.status === 'pending_confirm')
+      .map((membership) => membership.profile_id);
+    const passedWaitlistIds = memberships
+      .filter((membership) => membership.status === 'waitlisted_passed')
       .map((membership) => membership.profile_id);
     const players = memberships
       .filter((membership) => membership.status === 'joined')
@@ -375,7 +470,11 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       .filter((player): player is Player => Boolean(player));
 
     const waitlist = memberships
-      .filter((membership) => membership.status === 'waitlisted')
+      .filter((membership) =>
+        membership.status === 'waitlisted'
+        || membership.status === 'pending_confirm'
+        || membership.status === 'waitlisted_passed',
+      )
       .map((membership) => playersById.get(membership.profile_id))
       .filter((player): player is Player => Boolean(player));
     const access = canAccessLockedLobby({
@@ -404,6 +503,8 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       createdBy: row.created_by,
       distanceKm: row.distance_km,
       waitlist,
+      pendingWaitlistIds,
+      passedWaitlistIds,
       gameType: row.game_type ?? 'friendly',
       accessType: access.accessType,
       fieldType: row.field_type ?? undefined,
@@ -1219,7 +1320,11 @@ export async function upsertLobbyMembership(lobbyId: string, profileId: string, 
     }
   }
 
-  const nextLobby = await fetchLobbyById(lobbyId);
+  if (status === 'joined' || status === 'waitlisted') {
+    await markWaitlistSpotNotificationsHandled(profileId, lobbyId);
+  }
+
+  const nextLobby = await syncLobbyWaitlistState(lobbyId, profileId) ?? await fetchLobbyById(lobbyId);
   if (!nextLobby) {
     return;
   }
@@ -1227,6 +1332,27 @@ export async function upsertLobbyMembership(lobbyId: string, profileId: string, 
   if (status === 'joined' && !wasJoinedBefore && resolvedProfile) {
     const friendIds = await fetchAcceptedFriendIds(profileId);
     await createFriendJoinedLobbyNotifications(profileId, resolvedProfile.name, friendIds, nextLobby);
+  }
+
+  await createOrganizerSummaryNotification(profileId, nextLobby);
+}
+
+export async function passLobbyWaitlistSpot(lobbyId: string, profileId: string) {
+  const lobby = await fetchLobbyById(lobbyId);
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (!(lobby.pendingWaitlistIds ?? []).includes(profileId)) {
+    throw new Error('The available spot is no longer reserved for you.');
+  }
+
+  await updateMembershipStatus(lobbyId, profileId, 'waitlisted_passed');
+  await markWaitlistSpotNotificationsHandled(profileId, lobbyId);
+
+  const nextLobby = await syncLobbyWaitlistState(lobbyId, profileId) ?? await fetchLobbyById(lobbyId);
+  if (!nextLobby) {
+    return;
   }
 
   await createOrganizerSummaryNotification(profileId, nextLobby);
@@ -1296,6 +1422,13 @@ export async function deleteLobbyMembership(lobbyId: string, profileId: string) 
 
   if (error) {
     throw error;
+  }
+
+  await markWaitlistSpotNotificationsHandled(profileId, lobbyId);
+
+  const nextLobby = await syncLobbyWaitlistState(lobbyId, profileId) ?? await fetchLobbyById(lobbyId);
+  if (nextLobby) {
+    await createOrganizerSummaryNotification(profileId, nextLobby);
   }
 }
 

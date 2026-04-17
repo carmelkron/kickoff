@@ -11,6 +11,7 @@ import {
   markNotificationRead,
   type AppNotification,
 } from '../lib/appNotifications';
+import { passLobbyWaitlistSpot, upsertLobbyMembership } from '../lib/appData';
 import { requireSupabase } from '../lib/supabase';
 
 export default function Navbar() {
@@ -26,6 +27,7 @@ export default function Navbar() {
   const [deletingNotificationId, setDeletingNotificationId] = useState('');
   const [clearingNotifications, setClearingNotifications] = useState(false);
   const [handledRequestActions, setHandledRequestActions] = useState<Record<string, 'accept' | 'decline'>>({});
+  const [handledWaitlistActions, setHandledWaitlistActions] = useState<Record<string, 'join' | 'pass'>>({});
   const notificationRef = useRef<HTMLDivElement | null>(null);
 
   const isActive = (path: string) => location.pathname === path;
@@ -40,6 +42,7 @@ export default function Navbar() {
     if (!currentUser) {
       setNotifications([]);
       setHandledRequestActions({});
+      setHandledWaitlistActions({});
       return;
     }
 
@@ -160,6 +163,11 @@ export default function Navbar() {
         delete next[notificationId];
         return next;
       });
+      setHandledWaitlistActions((current) => {
+        const next = { ...current };
+        delete next[notificationId];
+        return next;
+      });
     } catch (error) {
       setNotificationActionError(error instanceof Error ? error.message : 'Delete failed');
     } finally {
@@ -178,6 +186,7 @@ export default function Navbar() {
       await deleteAllNotifications(currentUser.id);
       setNotifications([]);
       setHandledRequestActions({});
+      setHandledWaitlistActions({});
     } catch (error) {
       setNotificationActionError(error instanceof Error ? error.message : 'Delete failed');
     } finally {
@@ -217,6 +226,31 @@ export default function Navbar() {
         await declineFriendRequest(notification.requesterId);
       }
       setHandledRequestActions((current) => ({
+        ...current,
+        [notification.id]: action,
+      }));
+      await refreshNotifications();
+    } catch (error) {
+      setNotificationActionError(error instanceof Error ? error.message : 'Action failed');
+    } finally {
+      setBusyNotificationId('');
+    }
+  }
+
+  async function handleWaitlistNotificationAction(action: 'join' | 'pass', notification: AppNotification) {
+    if (!currentUser || !notification.lobbyId) {
+      return;
+    }
+
+    setBusyNotificationId(notification.id);
+    setNotificationActionError('');
+    try {
+      if (action === 'join') {
+        await upsertLobbyMembership(notification.lobbyId, currentUser.id, 'joined');
+      } else {
+        await passLobbyWaitlistSpot(notification.lobbyId, currentUser.id);
+      }
+      setHandledWaitlistActions((current) => ({
         ...current,
         [notification.id]: action,
       }));
@@ -317,6 +351,7 @@ export default function Navbar() {
                       ) : (
                         notifications.map((notification) => {
                           const handledAction = handledRequestActions[notification.id];
+                          const handledWaitlistAction = handledWaitlistActions[notification.id];
                           return (
                             <div
                               key={notification.id}
@@ -385,6 +420,42 @@ export default function Navbar() {
                                   >
                                     <Check size={13} />
                                     {handledAction === 'accept' ? t.nav.requestAccepted : t.nav.requestDeclined}
+                                  </span>
+                                </div>
+                              )}
+
+                              {notification.kind === 'waitlist_spot_opened' && notification.lobbyId && !handledWaitlistAction && (
+                                <div className="mt-3 ms-5 flex items-center gap-2">
+                                  <button
+                                    onClick={() => void handleWaitlistNotificationAction('join', notification)}
+                                    disabled={busyNotificationId === notification.id}
+                                    className="px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-xs font-semibold rounded-lg transition-colors"
+                                  >
+                                    {lang === 'he' ? 'כנס' : 'Join'}
+                                  </button>
+                                  <button
+                                    onClick={() => void handleWaitlistNotificationAction('pass', notification)}
+                                    disabled={busyNotificationId === notification.id}
+                                    className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-60 text-gray-700 text-xs font-semibold rounded-lg transition-colors"
+                                  >
+                                    {lang === 'he' ? 'העבר לבא בתור' : 'Pass to next'}
+                                  </button>
+                                </div>
+                              )}
+
+                              {notification.kind === 'waitlist_spot_opened' && handledWaitlistAction && (
+                                <div className="mt-3 ms-5">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg ${
+                                      handledWaitlistAction === 'join'
+                                        ? 'bg-green-50 text-green-700 border border-green-200'
+                                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    }`}
+                                  >
+                                    <Check size={13} />
+                                    {handledWaitlistAction === 'join'
+                                      ? (lang === 'he' ? 'המקום אושר' : 'Spot confirmed')
+                                      : (lang === 'he' ? 'הועבר לבא בתור' : 'Passed to next')}
                                   </span>
                                 </div>
                               )}

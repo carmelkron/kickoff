@@ -62,6 +62,8 @@ export interface Lobby {
   createdBy: string;
   distanceKm: number;
   waitlist: Player[];
+  pendingWaitlistIds?: string[];
+  passedWaitlistIds?: string[];
   gameType: GameType;
   accessType: LobbyAccessType;
   fieldType?: FieldType;

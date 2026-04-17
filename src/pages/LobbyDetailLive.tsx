@@ -3,7 +3,7 @@ import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, Lock, MapPin,
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { createLobbyInvite, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
+import { createLobbyInvite, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
 import { getJoinLobbyError } from '../lib/validation';
 import type { ContributionType, Lobby, LobbyInvite, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
 import { formatDateTime } from '../utils/format';
@@ -211,7 +211,10 @@ export default function LobbyDetailLive() {
         )
       : [];
   const myWaitlistIndex = currentUser ? resolvedLobby.waitlist.findIndex((player) => player.id === currentUser.id) : -1;
-  const isFirstWaitlisted = myWaitlistIndex === 0;
+  const pendingWaitlistIds = resolvedLobby.pendingWaitlistIds ?? [];
+  const passedWaitlistIds = resolvedLobby.passedWaitlistIds ?? [];
+  const isPendingWaitlistSpot = currentUser ? pendingWaitlistIds.includes(currentUser.id) : false;
+  const hasPassedWaitlistSpot = currentUser ? passedWaitlistIds.includes(currentUser.id) : false;
   const inviteCandidateIds = new Set(invites.map((invite) => invite.invitedProfileId));
   const inviteCandidates =
     currentUser
@@ -232,8 +235,11 @@ export default function LobbyDetailLive() {
     if (lobby.players.some((player) => player.id === currentUser.id)) {
       return 'joined';
     }
+    if (isPendingWaitlistSpot) {
+      return 'pending_confirm';
+    }
     if (myWaitlistIndex >= 0) {
-      return !isFull && isFirstWaitlisted ? 'pending_confirm' : 'waitlisted';
+      return 'waitlisted';
     }
     return 'none';
   })();
@@ -295,6 +301,14 @@ export default function LobbyDetailLive() {
     }
 
     void runMembershipAction(() => upsertLobbyMembership(lobbyId, currentUser.id, 'joined'));
+  }
+
+  function handlePassToNext() {
+    if (!currentUser) {
+      return;
+    }
+
+    void runMembershipAction(() => passLobbyWaitlistSpot(lobbyId, currentUser.id));
   }
 
   async function handleDeleteLobby() {
@@ -1003,7 +1017,19 @@ export default function LobbyDetailLive() {
                 <div className={`w-7 h-7 rounded-full ${player.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
                   {player.initials}
                 </div>
-                <span className="text-gray-700 flex-1">{player.name}</span>
+                <div className="flex flex-1 items-center gap-2">
+                  <span className="text-gray-700">{player.name}</span>
+                  {pendingWaitlistIds.includes(player.id) && (
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                      {lang === 'he' ? 'יכול להיכנס עכשיו' : 'Can join now'}
+                    </span>
+                  )}
+                  {passedWaitlistIds.includes(player.id) && (
+                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                      {lang === 'he' ? 'העביר זמנית לבא בתור' : 'Passed to next for now'}
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs font-semibold text-primary-700">🏆 {player.competitivePoints ?? 0}</span>
               </div>
             ))}
@@ -1145,22 +1171,31 @@ export default function LobbyDetailLive() {
         <div className="bg-green-50 border border-green-200 rounded-2xl p-5 mb-4 text-center">
           <p className="font-semibold text-green-800 mb-1">{lang === 'he' ? 'יש לך מקום!' : 'A spot opened for you!'}</p>
           <p className="text-sm text-green-700 mb-3">
-            {lang === 'he' ? 'אתה ראשון ברשימת ההמתנה. אשר כדי להיכנס.' : 'You are first on the waitlist. Confirm to claim the spot.'}
+            {lang === 'he'
+              ? 'התפנה מקום עבורך. אפשר להיכנס עכשיו או להעביר זמנית לבא בתור בלי לאבד את המיקום שלך ברשימת ההעדפה.'
+              : 'A spot opened for you. You can join now or temporarily pass it to the next player without losing your priority.'}
           </p>
-          <div className="flex gap-2 justify-center">
+          <div className="flex flex-wrap gap-2 justify-center">
             <button
               onClick={handleConfirm}
               disabled={saving}
               className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white rounded-xl font-semibold text-sm transition-colors"
             >
-              {lang === 'he' ? 'אשר הצטרפות' : 'Confirm'}
+              {lang === 'he' ? 'כנס' : 'Join'}
+            </button>
+            <button
+              onClick={handlePassToNext}
+              disabled={saving}
+              className="px-5 py-2 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-60 text-gray-700 rounded-xl font-semibold text-sm transition-colors"
+            >
+              {lang === 'he' ? 'העבר לבא בתור' : 'Pass to next'}
             </button>
             <button
               onClick={handleLeave}
               disabled={saving}
-              className="px-5 py-2 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-60 text-gray-600 rounded-xl font-semibold text-sm transition-colors"
+              className="px-5 py-2 bg-transparent hover:bg-white/70 disabled:opacity-60 text-green-700 rounded-xl font-medium text-sm transition-colors"
             >
-              {lang === 'he' ? 'וותר' : 'Leave waitlist'}
+              {lang === 'he' ? 'צא מרשימת ההמתנה' : 'Leave waitlist'}
             </button>
           </div>
         </div>
@@ -1193,9 +1228,17 @@ export default function LobbyDetailLive() {
           {myStatus === 'waitlisted' && (
             <div className="space-y-2">
               <div className="w-full py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 font-medium text-sm text-center">
-                {lang === 'he'
-                  ? `אתה במקום #${myWaitlistIndex + 1} ברשימת ההמתנה`
-                  : `You are #${myWaitlistIndex + 1} on the waitlist`}
+                {hasPassedWaitlistSpot
+                  ? (
+                    lang === 'he'
+                      ? `אתה במקום #${myWaitlistIndex + 1} ברשימת ההמתנה. העברת זמנית את המקום שנפתח לבא בתור.`
+                      : `You are #${myWaitlistIndex + 1} on the waitlist. You temporarily passed the current opening to the next player.`
+                  )
+                  : (
+                    lang === 'he'
+                      ? `אתה במקום #${myWaitlistIndex + 1} ברשימת ההמתנה`
+                      : `You are #${myWaitlistIndex + 1} on the waitlist`
+                  )}
               </div>
               <button
                 onClick={handleLeave}

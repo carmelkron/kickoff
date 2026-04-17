@@ -57,7 +57,7 @@ create table if not exists public.lobbies (
 create table if not exists public.lobby_memberships (
   lobby_id text not null references public.lobbies (id) on delete cascade,
   profile_id text not null references public.profiles (id) on delete cascade,
-  status text not null check (status in ('joined', 'waitlisted', 'pending_confirm', 'left')),
+  status text not null check (status in ('joined', 'waitlisted', 'pending_confirm', 'waitlisted_passed', 'left')),
   created_at timestamptz not null default now(),
   primary key (lobby_id, profile_id)
 );
@@ -141,7 +141,7 @@ create table if not exists public.notifications (
   profile_id text not null references public.profiles (id) on delete cascade,
   actor_profile_id text references public.profiles (id) on delete cascade,
   lobby_id text references public.lobbies (id) on delete cascade,
-  kind text not null check (kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'lobby_invite', 'competitive_result', 'team_assigned', 'organizer_summary')),
+  kind text not null check (kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'waitlist_spot_opened', 'lobby_invite', 'competitive_result', 'team_assigned', 'organizer_summary')),
   data jsonb not null default '{}'::jsonb,
   is_read boolean not null default false,
   created_at timestamptz not null default now()
@@ -430,7 +430,7 @@ alter table public.lobbies drop constraint if exists lobbies_status_check;
 alter table public.lobbies add constraint lobbies_status_check check (status in ('active', 'deleted'));
 alter table public.notifications drop constraint if exists notifications_kind_check;
 alter table public.notifications add constraint notifications_kind_check check (
-  kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'lobby_invite', 'competitive_result', 'team_assigned', 'organizer_summary')
+  kind in ('friend_request', 'friend_request_accepted', 'friend_request_declined', 'friend_joined_lobby', 'waitlist_spot_opened', 'lobby_invite', 'competitive_result', 'team_assigned', 'organizer_summary')
 );
 
 create table if not exists public.lobby_invites (

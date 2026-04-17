@@ -7,6 +7,7 @@ type NotificationKind =
   | 'friend_request_accepted'
   | 'friend_request_declined'
   | 'friend_joined_lobby'
+  | 'waitlist_spot_opened'
   | 'lobby_invite'
   | 'competitive_result'
   | 'team_assigned'
@@ -129,6 +130,25 @@ function mapNotification(row: NotificationRow, lang: Language): AppNotification 
       createdAt: row.created_at,
       lobbyId: row.lobby_id ?? undefined,
       profileId: row.actor_profile_id ?? undefined,
+    };
+  }
+
+  if (row.kind === 'waitlist_spot_opened') {
+    const lobbyTitle = readString(row.data, 'lobbyTitle');
+    return {
+      id: row.id,
+      kind: row.kind,
+      title: isHebrew ? 'התפנה לך מקום בלובי' : 'A lobby spot opened for you',
+      message: lobbyTitle
+        ? (isHebrew
+            ? `יש לך כרגע אפשרות להיכנס ל-${lobbyTitle}. אפשר לאשר או להעביר זמנית לבא בתור בלי לאבד עדיפות.`
+            : `You can now join ${lobbyTitle}. You may confirm or temporarily pass it to the next player without losing priority.`)
+        : (isHebrew
+            ? 'יש לך כרגע אפשרות להיכנס ללובי. אפשר לאשר או להעביר זמנית לבא בתור בלי לאבד עדיפות.'
+            : 'You can now join the lobby. You may confirm or temporarily pass it to the next player without losing priority.'),
+      isRead: row.is_read,
+      createdAt: row.created_at,
+      lobbyId: row.lobby_id ?? undefined,
     };
   }
 
@@ -385,6 +405,39 @@ export async function createFriendJoinedLobbyNotifications(actorId: string, acto
     }));
 
   await insertNotifications(rows);
+}
+
+export async function createWaitlistSpotOpenedNotifications(
+  actorId: string,
+  lobby: Lobby,
+  recipientIds: string[],
+) {
+  await insertNotifications(
+    recipientIds.map((recipientId) => ({
+      profile_id: recipientId,
+      actor_profile_id: actorId,
+      lobby_id: lobby.id,
+      kind: 'waitlist_spot_opened' as const,
+      data: {
+        lobbyTitle: lobby.title,
+      },
+    })),
+  );
+}
+
+export async function markWaitlistSpotNotificationsHandled(profileId: string, lobbyId: string) {
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('profile_id', profileId)
+    .eq('lobby_id', lobbyId)
+    .eq('kind', 'waitlist_spot_opened')
+    .eq('is_read', false);
+
+  if (error && !isMissingNotificationsTableError(error)) {
+    throw error;
+  }
 }
 
 export async function createLobbyInviteNotification(actorId: string, actorName: string, recipientId: string, lobby: Lobby) {
