@@ -156,7 +156,7 @@ export const mockPlayers: Player[] = [
   },
 ];
 
-const rawMockLobbies: Array<Omit<Lobby, 'accessType' | 'viewerHasAccess' | 'viewerIsInvited' | 'viewerHasFriendInside'>> = [
+const rawMockLobbies: Array<Omit<Lobby, 'organizerIds' | 'accessType' | 'viewerHasAccess' | 'viewerIsInvited' | 'viewerHasFriendInside'>> = [
   {
     id: 'l1', title: 'משחק ערב בגורדון',
     fieldName: 'מגרש גורדון', address: 'שדרות נורדאו 12', city: 'תל אביב',
@@ -243,6 +243,7 @@ const rawMockLobbies: Array<Omit<Lobby, 'accessType' | 'viewerHasAccess' | 'view
 
 export const mockLobbies: Lobby[] = rawMockLobbies.map((lobby) => ({
   ...lobby,
+  organizerIds: [],
   accessType: lobby.isPrivate ? 'locked' : 'open',
   viewerHasAccess: true,
   viewerIsInvited: false,

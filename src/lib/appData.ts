@@ -16,6 +16,7 @@ import { requireSupabase } from './supabase';
 import { getJoinLobbyError, getJoinLobbyTargetStatus, normalizeText, validateCreateLobbyPayload } from './validation';
 import { calculateCompetitiveStandings } from './competitiveResults';
 import { buildLobbyHistoryEntries, type LobbyHistoryMembershipRow } from './lobbyHistory';
+import { canManageLobby } from './lobbyRoles';
 import { buildBalancedLobbyTeams } from './teamAssignment';
 import { buildWaitlistSyncPlan } from './waitlist';
 
@@ -82,6 +83,16 @@ function isMissingLobbyJoinRequestsTableError(error: unknown) {
 function isMissingLobbyMessagesTableError(error: unknown) {
   const text = getErrorText(error).toLowerCase();
   return text.includes('lobby_messages') && (
+    text.includes('does not exist')
+    || text.includes('schema cache')
+    || text.includes('could not find')
+    || text.includes('relation')
+  );
+}
+
+function isMissingLobbyOrganizersTableError(error: unknown) {
+  const text = getErrorText(error).toLowerCase();
+  return text.includes('lobby_organizers') && (
     text.includes('does not exist')
     || text.includes('schema cache')
     || text.includes('could not find')
@@ -207,6 +218,11 @@ type LobbyMessageRow = {
   profile_id: string;
   body: string;
   created_at: string;
+};
+
+type LobbyOrganizerRow = {
+  lobby_id: string;
+  profile_id: string;
 };
 
 function resolveLobbyStatus(row: LobbyRow): LobbyStatus {
@@ -520,7 +536,12 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       : Promise.resolve({ data: [] as LobbyJoinRequestRow[], error: null }),
   ]);
 
-  const [{ data: lobbyRows, error: lobbiesError }, { data: profileRows, error: profilesError }, { data: membershipRows, error: membershipsError }] = await Promise.all([
+  const [
+    { data: lobbyRows, error: lobbiesError },
+    { data: profileRows, error: profilesError },
+    { data: membershipRows, error: membershipsError },
+    { data: organizerRows, error: organizersError },
+  ] = await Promise.all([
     fetchLobbyRows().then((data) => ({ data, error: null })),
     supabase
       .from('profiles')
@@ -528,6 +549,9 @@ export async function fetchLobbies(): Promise<Lobby[]> {
     supabase
       .from('lobby_memberships')
       .select('lobby_id, profile_id, status, created_at'),
+    supabase
+      .from('lobby_organizers')
+      .select('lobby_id, profile_id'),
   ]);
 
   if (lobbiesError) {
@@ -539,6 +563,9 @@ export async function fetchLobbies(): Promise<Lobby[]> {
   if (membershipsError) {
     throw membershipsError;
   }
+  if (organizersError && !isMissingLobbyOrganizersTableError(organizersError)) {
+    throw organizersError;
+  }
   if (inviteRows.error) {
     throw inviteRows.error;
   }
@@ -548,6 +575,7 @@ export async function fetchLobbies(): Promise<Lobby[]> {
 
   const playersById = new Map<string, Player>(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
   const membershipsByLobby = new Map<string, MembershipRow[]>();
+  const organizerIdsByLobby = new Map<string, string[]>();
   const viewerInviteStatusByLobbyId = new Map<string, LobbyInviteStatus>(
     ((inviteRows.data ?? []) as LobbyInviteRow[]).map((row) => [row.lobby_id, row.status]),
   );
@@ -560,6 +588,12 @@ export async function fetchLobbies(): Promise<Lobby[]> {
     const list = membershipsByLobby.get(membership.lobby_id) ?? [];
     list.push(membership);
     membershipsByLobby.set(membership.lobby_id, list);
+  }
+
+  for (const organizer of (organizerRows ?? []) as LobbyOrganizerRow[]) {
+    const list = organizerIdsByLobby.get(organizer.lobby_id) ?? [];
+    list.push(organizer.profile_id);
+    organizerIdsByLobby.set(organizer.lobby_id, list);
   }
 
   return ((lobbyRows ?? []) as LobbyRow[]).map((row) => {
@@ -620,6 +654,7 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       price: row.price ?? undefined,
       description: row.description ?? undefined,
       createdBy: row.created_by,
+      organizerIds: [...new Set(organizerIdsByLobby.get(row.id) ?? [])].filter((profileId) => profileId !== row.created_by),
       distanceKm: row.distance_km,
       waitlist,
       pendingWaitlistIds,
@@ -750,6 +785,74 @@ export async function fetchLobbyJoinRequests(lobbyId: string): Promise<LobbyJoin
         : mappedRequest;
     })
     .filter((request): request is LobbyJoinRequest => request !== null);
+}
+
+export async function assignLobbyOrganizer(lobbyId: string, actorProfileId: string, organizerProfileId: string) {
+  const supabase = requireSupabase();
+  const lobby = await fetchLobbyById(lobbyId);
+
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (lobby.createdBy !== actorProfileId) {
+    throw new Error('Only the lobby creator can assign secondary organizers.');
+  }
+
+  if (organizerProfileId === lobby.createdBy) {
+    throw new Error('The lobby creator is already an organizer.');
+  }
+
+  if (!lobby.players.some((player) => player.id === organizerProfileId)) {
+    throw new Error('Secondary organizers must already be joined in the lobby.');
+  }
+
+  if (lobby.organizerIds.includes(organizerProfileId)) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from('lobby_organizers')
+    .upsert(
+      {
+        lobby_id: lobbyId,
+        profile_id: organizerProfileId,
+      },
+      { onConflict: 'lobby_id,profile_id' },
+    );
+
+  if (error) {
+    if (isMissingLobbyOrganizersTableError(error)) {
+      throw new Error('Secondary organizers require the latest Supabase patch. Apply it and try again.');
+    }
+    throw error;
+  }
+}
+
+export async function removeLobbyOrganizer(lobbyId: string, actorProfileId: string, organizerProfileId: string) {
+  const supabase = requireSupabase();
+  const lobby = await fetchLobbyById(lobbyId);
+
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (lobby.createdBy !== actorProfileId) {
+    throw new Error('Only the lobby creator can remove secondary organizers.');
+  }
+
+  const { error } = await supabase
+    .from('lobby_organizers')
+    .delete()
+    .eq('lobby_id', lobbyId)
+    .eq('profile_id', organizerProfileId);
+
+  if (error) {
+    if (isMissingLobbyOrganizersTableError(error)) {
+      throw new Error('Secondary organizers require the latest Supabase patch. Apply it and try again.');
+    }
+    throw error;
+  }
 }
 
 export async function fetchLobbyMessages(lobbyId: string): Promise<LobbyMessage[]> {
@@ -931,6 +1034,10 @@ export async function generateLobbyTeams(lobbyId: string, actorProfileId: string
     throw new Error('Lobby not found.');
   }
 
+  if (!canManageLobby(lobby, actorProfileId)) {
+    throw new Error('Only the lobby organizer team can create teams.');
+  }
+
   if (!lobby.numTeams || !lobby.playersPerTeam) {
     throw new Error('This lobby is missing team settings.');
   }
@@ -1023,8 +1130,8 @@ export async function swapLobbyTeamPlayers(
     throw new Error('Lobby not found.');
   }
 
-  if (lobby.createdBy !== actorProfileId) {
-    throw new Error('Only the lobby creator can edit teams.');
+  if (!canManageLobby(lobby, actorProfileId)) {
+    throw new Error('Only the lobby organizer team can edit teams.');
   }
 
   const { data: existingResults, error: existingResultsError } = await supabase
@@ -1255,8 +1362,8 @@ export async function submitCompetitiveLobbyResult(
     throw new Error('Lobby not found.');
   }
 
-  if (lobby.createdBy !== submittedByProfileId) {
-    throw new Error('Only the lobby creator can submit the result.');
+  if (!canManageLobby(lobby, submittedByProfileId)) {
+    throw new Error('Only the lobby organizer team can submit the result.');
   }
 
   if (lobby.gameType !== 'competitive') {
@@ -1763,8 +1870,8 @@ export async function approveLobbyJoinRequest(lobbyId: string, requesterProfileI
     throw new Error('Failed to resolve the requesting player.');
   }
 
-  if (lobby.createdBy !== actorProfileId) {
-    throw new Error('Only the lobby creator can approve access requests.');
+  if (!canManageLobby(lobby, actorProfileId)) {
+    throw new Error('Only the lobby organizer team can approve access requests.');
   }
 
   if (lobby.players.some((player) => player.id === requesterProfileId) || lobby.waitlist.some((player) => player.id === requesterProfileId)) {
@@ -1818,8 +1925,8 @@ export async function declineLobbyJoinRequest(lobbyId: string, requesterProfileI
     throw new Error('Lobby not found.');
   }
 
-  if (lobby.createdBy !== actorProfileId) {
-    throw new Error('Only the lobby creator can decline access requests.');
+  if (!canManageLobby(lobby, actorProfileId)) {
+    throw new Error('Only the lobby organizer team can decline access requests.');
   }
 
   const timestamp = new Date().toISOString();

@@ -64,6 +64,7 @@ export interface Lobby {
   price?: number;
   description?: string;
   createdBy: string;
+  organizerIds: string[];
   distanceKm: number;
   waitlist: Player[];
   pendingWaitlistIds?: string[];

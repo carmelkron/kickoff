@@ -30,6 +30,7 @@ function makeLobby(overrides: Partial<Lobby> = {}): Lobby {
     minRating: 4,
     isPrivate: false,
     createdBy: 'player-1',
+    organizerIds: [],
     distanceKm: 1,
     waitlist: [],
     gameType: 'competitive',

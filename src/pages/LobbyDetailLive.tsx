@@ -3,7 +3,8 @@ import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, LoaderCircle,
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { approveLobbyJoinRequest, createLobbyInvite, declineLobbyJoinRequest, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyJoinRequests, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, requestLobbyAccess, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
+import { approveLobbyJoinRequest, assignLobbyOrganizer, createLobbyInvite, declineLobbyJoinRequest, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyJoinRequests, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, removeLobbyOrganizer, requestLobbyAccess, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
+import { canManageLobby } from '../lib/lobbyRoles';
 import { getJoinLobbyError, getJoinLobbyTargetStatus } from '../lib/validation';
 import type { ContributionType, Lobby, LobbyInvite, LobbyJoinRequest, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
 import { formatDateTime } from '../utils/format';
@@ -95,7 +96,7 @@ export default function LobbyDetailLive() {
           ? await fetchLobbyInvites(id)
           : [];
       const nextJoinRequests =
-        nextLobby && currentUser?.id === nextLobby.createdBy && nextLobby.accessType === 'locked'
+        nextLobby && currentUser && canManageLobby(nextLobby, currentUser.id) && nextLobby.accessType === 'locked'
           ? await fetchLobbyJoinRequests(id)
           : [];
       setLobby(nextLobby);
@@ -122,7 +123,7 @@ export default function LobbyDetailLive() {
   }, []);
 
   const canSubmitResult =
-    currentUser?.id === lobby?.createdBy
+    Boolean(lobby && canManageLobby(lobby, currentUser?.id))
     && lobby?.gameType === 'competitive'
     && (lobby ? new Date(lobby.datetime) < new Date() : false)
     && teams.length > 0
@@ -175,13 +176,14 @@ export default function LobbyDetailLive() {
   const avg = avgCompetitivePoints(resolvedLobby.players);
   const isCompetitive = resolvedLobby.gameType === 'competitive';
   const isCreator = currentUser?.id === resolvedLobby.createdBy;
+  const canManageCurrentLobby = canManageLobby(resolvedLobby, currentUser?.id);
   const isLobbyActive = resolvedLobby.status === 'active';
   const isLobbyExpired = resolvedLobby.status === 'expired';
   const viewerJoinRequestStatus = resolvedLobby.viewerJoinRequestStatus ?? null;
   const viewerCanRequestAccess =
     resolvedLobby.accessType === 'locked'
     && !resolvedLobby.viewerHasAccess
-    && !isCreator;
+    && !canManageCurrentLobby;
   const hasCoords = resolvedLobby.latitude != null && resolvedLobby.longitude != null;
   const hasCurrentLocation =
     distancePreference.locationMode === 'current' && distancePreference.currentCoords != null;
@@ -207,7 +209,7 @@ export default function LobbyDetailLive() {
   const gameHasPassed = new Date(resolvedLobby.datetime) < new Date();
   const hasMissingPreferredPosition = resolvedLobby.players.some((player) => !normalizePreferredPosition(player.position));
   const canGenerateTeams =
-    isCreator
+    canManageCurrentLobby
     && isLobbyActive
     && Boolean(resolvedLobby.numTeams && resolvedLobby.playersPerTeam)
     && resolvedLobby.players.length === resolvedLobby.maxPlayers
@@ -241,6 +243,10 @@ export default function LobbyDetailLive() {
           .filter((user) => !resolvedLobby.waitlist.some((player) => player.id === user.id))
           .filter((user) => !inviteCandidateIds.has(user.id))
       : [];
+  const secondaryOrganizerPlayers = resolvedLobby.players.filter((player) => resolvedLobby.organizerIds.includes(player.id));
+  const organizerCandidatePlayers = resolvedLobby.players.filter((player) => (
+    player.id !== resolvedLobby.createdBy && !resolvedLobby.organizerIds.includes(player.id)
+  ));
   const ageRangeLabel = formatAgeRange(resolvedLobby.minAge, resolvedLobby.maxAge, lang);
 
   const myStatus: MyStatus = (() => {
@@ -364,7 +370,7 @@ export default function LobbyDetailLive() {
   }
 
   async function handleGenerateTeams() {
-    if (!currentUser) {
+    if (!currentUser || !canManageCurrentLobby) {
       return;
     }
 
@@ -399,7 +405,7 @@ export default function LobbyDetailLive() {
   }
 
   async function handleJoinRequestAction(action: 'approve' | 'decline', requesterProfileId: string) {
-    if (!currentUser) {
+    if (!currentUser || !canManageCurrentLobby) {
       return;
     }
 
@@ -420,7 +426,7 @@ export default function LobbyDetailLive() {
   }
 
   async function handleSwapPlayers(targetProfileId: string, targetTeamId: string) {
-    if (!currentUser || !selectedSwapPlayer) {
+    if (!currentUser || !selectedSwapPlayer || !canManageCurrentLobby) {
       return;
     }
 
@@ -473,7 +479,7 @@ export default function LobbyDetailLive() {
   }
 
   async function handleSubmitResult() {
-    if (!currentUser) {
+    if (!currentUser || !canManageCurrentLobby) {
       return;
     }
 
@@ -494,6 +500,40 @@ export default function LobbyDetailLive() {
       setError(nextError instanceof Error ? nextError.message : 'Failed to submit result');
     } finally {
       setSubmittingResult(false);
+    }
+  }
+
+  async function handleAssignOrganizer(profileId: string) {
+    if (!currentUser || !isCreator) {
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      await assignLobbyOrganizer(lobbyId, currentUser.id, profileId);
+      await loadLobby();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Failed to assign organizer');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemoveOrganizer(profileId: string) {
+    if (!currentUser || !isCreator) {
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      await removeLobbyOrganizer(lobbyId, currentUser.id, profileId);
+      await loadLobby();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Failed to remove organizer');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -581,6 +621,98 @@ export default function LobbyDetailLive() {
       )}
 
       {isCreator && (
+        <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">
+                {lang === 'he' ? 'מארגנים משניים' : 'Secondary organizers'}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                {lang === 'he'
+                  ? 'מארגנים משניים יכולים לאשר בקשות כניסה, לסדר הרכבים, ולדווח תוצאות בסוף המשחק.'
+                  : 'Secondary organizers can approve access requests, manage teams, and report results after the match.'}
+              </p>
+            </div>
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+              {lang === 'he' ? `${secondaryOrganizerPlayers.length} פעילים` : `${secondaryOrganizerPlayers.length} active`}
+            </span>
+          </div>
+
+          {secondaryOrganizerPlayers.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {secondaryOrganizerPlayers.map((player) => (
+                <div key={player.id} className="flex items-center gap-3 rounded-2xl bg-gray-50 px-3 py-2">
+                  {player.photoUrl ? (
+                    <img src={player.photoUrl} alt={player.name} className="h-9 w-9 rounded-full object-cover" />
+                  ) : (
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-full ${player.avatarColor} text-xs font-bold text-white`}>
+                      {player.initials}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-800">{player.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {lang === 'he' ? 'יכול/ה לנהל בקשות, הרכבים ותוצאות' : 'Can manage requests, teams, and results'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleRemoveOrganizer(player.id)}
+                    disabled={saving}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {lang === 'he' ? 'הסר' : 'Remove'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 rounded-2xl bg-gray-50 px-3 py-3 text-sm text-gray-500">
+              {lang === 'he'
+                ? 'עדיין לא הוגדרו מארגנים משניים ללובי הזה.'
+                : 'No secondary organizers were assigned to this lobby yet.'}
+            </p>
+          )}
+
+          <div className="mt-4 space-y-2">
+            {organizerCandidatePlayers.length > 0 ? (
+              organizerCandidatePlayers.map((player) => (
+                <div key={player.id} className="flex items-center gap-3 rounded-2xl border border-gray-100 px-3 py-2">
+                  {player.photoUrl ? (
+                    <img src={player.photoUrl} alt={player.name} className="h-9 w-9 rounded-full object-cover" />
+                  ) : (
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-full ${player.avatarColor} text-xs font-bold text-white`}>
+                      {player.initials}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-gray-800">{player.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {lang === 'he' ? 'משתתף/ת בלובי כרגע' : 'Currently joined in this lobby'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleAssignOrganizer(player.id)}
+                    disabled={saving}
+                    className="rounded-xl bg-primary-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
+                  >
+                    {lang === 'he' ? 'הפוך למארגן משני' : 'Make organizer'}
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-2xl bg-gray-50 px-3 py-3 text-sm text-gray-500">
+                {lang === 'he'
+                  ? 'אין כרגע משתתפים נוספים שאפשר להפוך למארגנים משניים.'
+                  : 'There are no other joined players available to promote right now.'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {canManageCurrentLobby && (
         <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -689,7 +821,7 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {isCreator && resolvedLobby.accessType === 'locked' && joinRequests.length > 0 && (
+      {canManageCurrentLobby && resolvedLobby.accessType === 'locked' && joinRequests.length > 0 && (
         <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -747,7 +879,7 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {isCreator && isCompetitive && teams.length > 0 && (
+      {canManageCurrentLobby && isCompetitive && teams.length > 0 && (
         <div className={`mb-4 rounded-2xl border p-4 ${lobbyResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -894,7 +1026,7 @@ export default function LobbyDetailLive() {
           <h2 className="font-semibold text-gray-900 mb-4">
             {lang === 'he' ? 'הקבוצות שנקבעו' : 'Assigned teams'}
           </h2>
-          {isCreator && (
+          {canManageCurrentLobby && (
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <p className="text-xs text-gray-500">
                 {selectedSwapPlayer
@@ -902,8 +1034,8 @@ export default function LobbyDetailLive() {
                       ? 'בחרו עכשיו שחקן מקבוצה אחרת כדי להחליף ביניהם.'
                       : 'Now choose a player from another team to swap them.')
                   : (lang === 'he'
-                      ? 'כמארגן אפשר לבחור שחקן ואז שחקן מקבוצה אחרת כדי להחליף ביניהם.'
-                      : 'As the organizer, select a player and then a player from another team to swap them.')}
+                      ? 'כחלק מצוות המארגנים אפשר לבחור שחקן ואז שחקן מקבוצה אחרת כדי להחליף ביניהם.'
+                      : 'As part of the organizer team, select a player and then a player from another team to swap them.')}
               </p>
               {selectedSwapPlayer && (
                 <button
@@ -960,9 +1092,9 @@ export default function LobbyDetailLive() {
                     <button
                       key={player.id}
                       type="button"
-                      disabled={!isCreator || swappingTeams}
+                      disabled={!canManageCurrentLobby || swappingTeams}
                       onClick={() => {
-                        if (!isCreator) {
+                        if (!canManageCurrentLobby) {
                           return;
                         }
 
@@ -983,7 +1115,7 @@ export default function LobbyDetailLive() {
                         void handleSwapPlayers(player.id, assignment.team.id);
                       }}
                       className={`flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2 text-start transition-colors ${
-                        isCreator ? 'hover:bg-primary-50 disabled:hover:bg-white' : ''
+                        canManageCurrentLobby ? 'hover:bg-primary-50 disabled:hover:bg-white' : ''
                       } ${
                         selectedSwapPlayer?.profileId === player.id && selectedSwapPlayer.teamId === assignment.team.id
                           ? 'ring-2 ring-primary-300 bg-primary-50'
@@ -1133,6 +1265,7 @@ export default function LobbyDetailLive() {
                   {player.id === lobby.createdBy && (
                     <span className="text-xs bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded-full">{t.lobby.organizer}</span>
                   )}
+                  {resolvedLobby.organizerIds.includes(player.id) && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">{lang === 'he' ? 'מארגן משני' : 'Co-organizer'}</span>}
                   {player.id === currentUser?.id && (
                     <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">{lang === 'he' ? 'אני' : 'me'}</span>
                   )}
