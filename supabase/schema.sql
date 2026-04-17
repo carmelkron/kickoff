@@ -158,6 +158,15 @@ create table if not exists public.lobby_join_requests (
   unique (lobby_id, requester_profile_id)
 );
 
+create table if not exists public.lobby_messages (
+  id uuid primary key default gen_random_uuid(),
+  lobby_id text not null references public.lobbies (id) on delete cascade,
+  profile_id text not null references public.profiles (id) on delete cascade,
+  body text not null,
+  created_at timestamptz not null default now(),
+  check (char_length(trim(body)) between 1 and 500)
+);
+
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   profile_id text not null references public.profiles (id) on delete cascade,
@@ -233,6 +242,7 @@ create index if not exists lobby_invites_lobby_id_idx on public.lobby_invites (l
 create index if not exists lobby_invites_invited_profile_id_idx on public.lobby_invites (invited_profile_id);
 create index if not exists lobby_join_requests_lobby_id_idx on public.lobby_join_requests (lobby_id);
 create index if not exists lobby_join_requests_requester_profile_id_idx on public.lobby_join_requests (requester_profile_id);
+create index if not exists lobby_messages_lobby_id_created_at_idx on public.lobby_messages (lobby_id, created_at desc);
 create index if not exists friend_requests_to_profile_status_idx on public.friend_requests (to_profile_id, status);
 create index if not exists lobby_ratings_lobby_id_idx on public.lobby_ratings (lobby_id);
 create index if not exists lobby_ratings_rated_profile_id_idx on public.lobby_ratings (rated_profile_id);
@@ -245,11 +255,29 @@ create index if not exists lobby_team_results_lobby_id_idx on public.lobby_team_
 create index if not exists competitive_point_events_profile_id_created_at_idx on public.competitive_point_events (profile_id, created_at desc);
 create index if not exists competitive_point_events_lobby_id_idx on public.competitive_point_events (lobby_id);
 
+do $$
+begin
+  if exists (
+    select 1
+    from pg_publication
+    where pubname = 'supabase_realtime'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'lobby_messages'
+  ) then
+    alter publication supabase_realtime add table public.lobby_messages;
+  end if;
+end $$;
+
 alter table public.profiles enable row level security;
 alter table public.lobbies enable row level security;
 alter table public.lobby_memberships enable row level security;
 alter table public.lobby_invites enable row level security;
 alter table public.lobby_join_requests enable row level security;
+alter table public.lobby_messages enable row level security;
 alter table public.friend_requests enable row level security;
 alter table public.lobby_ratings enable row level security;
 alter table public.notifications enable row level security;
@@ -836,6 +864,63 @@ using (
           from public.lobbies l
           where l.id = lobby_id
             and l.created_by = p.id
+        )
+      )
+  )
+);
+
+drop policy if exists "lobby messages readable by participants" on public.lobby_messages;
+create policy "lobby messages readable by participants"
+on public.lobby_messages
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles viewer
+    where viewer.auth_user_id = auth.uid()
+      and (
+        exists (
+          select 1
+          from public.lobby_memberships lm
+          where lm.lobby_id = lobby_id
+            and lm.profile_id = viewer.id
+            and lm.status in ('joined', 'waitlisted', 'pending_confirm', 'waitlisted_passed')
+        )
+        or exists (
+          select 1
+          from public.lobbies l
+          where l.id = lobby_id
+            and l.created_by = viewer.id
+        )
+      )
+  )
+);
+
+drop policy if exists "participants can create lobby messages" on public.lobby_messages;
+create policy "participants can create lobby messages"
+on public.lobby_messages
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles sender
+    where sender.id = profile_id
+      and sender.auth_user_id = auth.uid()
+      and (
+        exists (
+          select 1
+          from public.lobby_memberships lm
+          where lm.lobby_id = lobby_id
+            and lm.profile_id = sender.id
+            and lm.status in ('joined', 'waitlisted', 'pending_confirm', 'waitlisted_passed')
+        )
+        or exists (
+          select 1
+          from public.lobbies l
+          where l.id = lobby_id
+            and l.created_by = sender.id
         )
       )
   )

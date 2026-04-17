@@ -12,6 +12,7 @@ import { getDistanceSourceText, loadSessionDistancePreference } from '../utils/d
 import { haversineKm } from '../utils/geo';
 import { formatLocationLabel } from '../utils/location';
 import LocationPreviewMap from '../components/LocationPreviewMap';
+import LobbyChat from '../components/LobbyChat';
 import { getPreferredPositionLabel, getTeamColorLabel, normalizePreferredPosition } from '../lib/teamAssignment';
 import { calculateCompetitiveStandings } from '../lib/competitiveResults';
 
@@ -261,6 +262,8 @@ export default function LobbyDetailLive() {
     currentUser
       ? teams.find((assignment) => assignment.players.some((player) => player.id === currentUser.id)) ?? null
       : null;
+  const canViewLobbyChat = Boolean(currentUser && (isCreator || myStatus !== 'none'));
+  const canSendLobbyChat = canViewLobbyChat;
   const myTeamResult =
     myTeamAssignment && lobbyResult
       ? lobbyResult.teamResults.find((teamResult) => teamResult.lobbyTeamId === myTeamAssignment.team.id) ?? null
@@ -1146,6 +1149,13 @@ export default function LobbyDetailLive() {
           ))}
         </div>
       </div>
+
+      <LobbyChat
+        lobbyId={lobbyId}
+        currentUser={currentUser}
+        canViewChat={canViewLobbyChat}
+        canSendChat={canSendLobbyChat}
+      />
 
       {lobby.waitlist.length > 0 && (
         <div className="bg-amber-50 rounded-2xl border border-amber-100 p-5 mb-4">

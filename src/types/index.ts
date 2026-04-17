@@ -101,6 +101,15 @@ export interface LobbyJoinRequest {
   requester: Player;
 }
 
+export interface LobbyMessage {
+  id: string;
+  lobbyId: string;
+  profileId: string;
+  body: string;
+  createdAt: string;
+  author: Player;
+}
+
 export interface LobbyTeam {
   id: string;
   lobbyId: string;

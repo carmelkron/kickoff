@@ -1,4 +1,4 @@
-import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry, LobbyAccessType, LobbyInvite, LobbyInviteStatus, LobbyJoinRequest, LobbyJoinRequestStatus } from '../types';
+import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry, LobbyAccessType, LobbyInvite, LobbyInviteStatus, LobbyJoinRequest, LobbyJoinRequestStatus, LobbyMessage } from '../types';
 import {
   createCompetitiveResultNotifications,
   createFriendJoinedLobbyNotifications,
@@ -72,6 +72,16 @@ function isMissingLobbyOptionalColumnError(error: unknown) {
 function isMissingLobbyJoinRequestsTableError(error: unknown) {
   const text = getErrorText(error).toLowerCase();
   return text.includes('lobby_join_requests') && (
+    text.includes('does not exist')
+    || text.includes('schema cache')
+    || text.includes('could not find')
+    || text.includes('relation')
+  );
+}
+
+function isMissingLobbyMessagesTableError(error: unknown) {
+  const text = getErrorText(error).toLowerCase();
+  return text.includes('lobby_messages') && (
     text.includes('does not exist')
     || text.includes('schema cache')
     || text.includes('could not find')
@@ -189,6 +199,14 @@ type LobbyJoinRequestRow = {
   created_at: string;
   responded_at: string | null;
   responded_by_profile_id: string | null;
+};
+
+type LobbyMessageRow = {
+  id: string;
+  lobby_id: string;
+  profile_id: string;
+  body: string;
+  created_at: string;
 };
 
 function resolveLobbyStatus(row: LobbyRow): LobbyStatus {
@@ -732,6 +750,103 @@ export async function fetchLobbyJoinRequests(lobbyId: string): Promise<LobbyJoin
         : mappedRequest;
     })
     .filter((request): request is LobbyJoinRequest => request !== null);
+}
+
+export async function fetchLobbyMessages(lobbyId: string): Promise<LobbyMessage[]> {
+  const supabase = requireSupabase();
+  const { data: messageRows, error: messagesError } = await supabase
+    .from('lobby_messages')
+    .select('id, lobby_id, profile_id, body, created_at')
+    .eq('lobby_id', lobbyId)
+    .order('created_at', { ascending: false })
+    .limit(120);
+
+  if (messagesError) {
+    if (isMissingLobbyMessagesTableError(messagesError)) {
+      return [];
+    }
+    throw messagesError;
+  }
+
+  const messages = ((messageRows ?? []) as LobbyMessageRow[]).reverse();
+  if (messages.length === 0) {
+    return [];
+  }
+
+  const profileIds = [...new Set(messages.map((message) => message.profile_id))];
+  const { data: profileRows, error: profilesError } = await supabase
+    .from('profiles')
+    .select(PROFILE_SELECT_FIELDS)
+    .in('id', profileIds);
+
+  if (profilesError) {
+    throw profilesError;
+  }
+
+  const playersById = new Map(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
+
+  return messages
+    .map((message) => {
+      const author = playersById.get(message.profile_id);
+      if (!author) {
+        return null;
+      }
+
+      return {
+        id: message.id,
+        lobbyId: message.lobby_id,
+        profileId: message.profile_id,
+        body: message.body,
+        createdAt: message.created_at,
+        author,
+      };
+    })
+    .filter((message): message is LobbyMessage => message !== null);
+}
+
+export async function createLobbyMessage(lobbyId: string, profileId: string, body: string) {
+  const messageBody = normalizeText(body).slice(0, 500);
+  if (messageBody.length === 0) {
+    throw new Error('Message cannot be empty.');
+  }
+
+  const [lobby, profile] = await Promise.all([
+    fetchLobbyById(lobbyId),
+    fetchProfileById(profileId),
+  ]);
+
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (!profile) {
+    throw new Error('Failed to resolve the sender.');
+  }
+
+  const isParticipant =
+    lobby.createdBy === profileId
+    || lobby.players.some((player) => player.id === profileId)
+    || lobby.waitlist.some((player) => player.id === profileId);
+
+  if (!isParticipant) {
+    throw new Error('Only lobby participants can send chat messages.');
+  }
+
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('lobby_messages')
+    .insert({
+      lobby_id: lobbyId,
+      profile_id: profileId,
+      body: messageBody,
+    });
+
+  if (error) {
+    if (isMissingLobbyMessagesTableError(error)) {
+      throw new Error('Lobby chat requires the latest Supabase patch. Apply it and try again.');
+    }
+    throw error;
+  }
 }
 
 function mapLobbyTeam(row: LobbyTeamRow): LobbyTeam {
