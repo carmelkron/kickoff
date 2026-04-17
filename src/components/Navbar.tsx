@@ -11,7 +11,12 @@ import {
   markNotificationRead,
   type AppNotification,
 } from '../lib/appNotifications';
-import { approveLobbyJoinRequest, declineLobbyJoinRequest, passLobbyWaitlistSpot, upsertLobbyMembership } from '../lib/appData';
+import { approveLobbyJoinRequest, declineLobbyJoinRequest, fetchPendingLobbyResultReminders, passLobbyWaitlistSpot, upsertLobbyMembership } from '../lib/appData';
+import {
+  dismissLobbyResultReminderForSession,
+  isLobbyResultReminderDismissedForSession,
+  type PendingLobbyResultReminder,
+} from '../lib/lobbyResultReminders';
 import { requireSupabase } from '../lib/supabase';
 
 export default function Navbar() {
@@ -29,6 +34,7 @@ export default function Navbar() {
   const [handledRequestActions, setHandledRequestActions] = useState<Record<string, 'accept' | 'decline'>>({});
   const [handledLobbyRequestActions, setHandledLobbyRequestActions] = useState<Record<string, 'accept' | 'decline'>>({});
   const [handledWaitlistActions, setHandledWaitlistActions] = useState<Record<string, 'join' | 'pass'>>({});
+  const [pendingResultReminder, setPendingResultReminder] = useState<PendingLobbyResultReminder | null>(null);
   const notificationRef = useRef<HTMLDivElement | null>(null);
 
   const isActive = (path: string) => location.pathname === path;
@@ -45,6 +51,7 @@ export default function Navbar() {
       setHandledRequestActions({});
       setHandledLobbyRequestActions({});
       setHandledWaitlistActions({});
+      setPendingResultReminder(null);
       return;
     }
 
@@ -107,6 +114,57 @@ export default function Navbar() {
       void supabase.removeChannel(channel);
     };
   }, [currentUser, lang]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setPendingResultReminder(null);
+      return;
+    }
+
+    const currentUserId = currentUser.id;
+    let cancelled = false;
+
+    async function loadResultReminder() {
+      try {
+        const reminders = await fetchPendingLobbyResultReminders(currentUserId);
+        const nextReminder = reminders.find((reminder) =>
+          !isLobbyResultReminderDismissedForSession(reminder.lobbyId)
+          && location.pathname !== `/lobby/${reminder.lobbyId}`,
+        ) ?? null;
+
+        if (!cancelled) {
+          setPendingResultReminder(nextReminder);
+        }
+      } catch {
+        if (!cancelled) {
+          setPendingResultReminder(null);
+        }
+      }
+    }
+
+    void loadResultReminder();
+    const intervalId = window.setInterval(() => {
+      void loadResultReminder();
+    }, 60000);
+
+    function handleWindowFocus() {
+      if (document.visibilityState === 'hidden') {
+        return;
+      }
+
+      void loadResultReminder();
+    }
+
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleWindowFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleWindowFocus);
+    };
+  }, [currentUser, location.pathname]);
 
   useEffect(() => {
     if (!notificationsOpen) {
@@ -295,8 +353,78 @@ export default function Navbar() {
     }
   }
 
+  function handleDismissResultReminder() {
+    if (!pendingResultReminder) {
+      return;
+    }
+
+    dismissLobbyResultReminderForSession(pendingResultReminder.lobbyId);
+    setPendingResultReminder(null);
+  }
+
+  function handleOpenResultReminderLobby() {
+    if (!pendingResultReminder) {
+      return;
+    }
+
+    const lobbyId = pendingResultReminder.lobbyId;
+    setPendingResultReminder(null);
+    navigate(`/lobby/${lobbyId}`);
+  }
+
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
+    <>
+      {currentUser && pendingResultReminder && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-amber-600">
+                  {lang === 'he' ? 'תזכורת למארגן' : 'Organizer reminder'}
+                </p>
+                <h2 className="mt-1 text-xl font-semibold text-gray-900">
+                  {lang === 'he' ? 'צריך לדווח תוצאה ללובי' : 'This lobby still needs a result'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissResultReminder}
+                className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+              >
+                {lang === 'he' ? 'אחר כך' : 'Later'}
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-semibold text-gray-900">{pendingResultReminder.lobbyTitle}</p>
+              <p className="mt-1 text-sm text-gray-600">
+                {lang === 'he'
+                  ? 'עבר מספיק זמן מאז פתיחת הלובי. פתחו את הלובי ודווחו כמה ניצחונות היו לכל קבוצה כדי לחלק נקודות.'
+                  : 'Enough time has passed since kickoff. Open the lobby and report each team\'s wins to award points.'}
+              </p>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleDismissResultReminder}
+                className="rounded-2xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                {lang === 'he' ? 'להזכיר לי אחר כך' : 'Remind me later'}
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenResultReminderLobby}
+                className="rounded-2xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-600"
+              >
+                {lang === 'he' ? 'פתח את הלובי' : 'Open lobby'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
       <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
         {/* Logo */}
         <button
@@ -584,5 +712,6 @@ export default function Navbar() {
         </div>
       </div>
     </header>
+    </>
   );
 }

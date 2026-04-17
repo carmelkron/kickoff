@@ -4,6 +4,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { approveLobbyJoinRequest, assignLobbyOrganizer, createLobbyInvite, declineLobbyJoinRequest, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyJoinRequests, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, removeLobbyOrganizer, requestLobbyAccess, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
+import { canSubmitLobbyResult, getLobbyResultReminderTime } from '../lib/lobbyResultReminders';
 import { canManageLobby } from '../lib/lobbyRoles';
 import { getJoinLobbyError, getJoinLobbyTargetStatus } from '../lib/validation';
 import type { ContributionType, Lobby, LobbyInvite, LobbyJoinRequest, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
@@ -125,7 +126,7 @@ export default function LobbyDetailLive() {
   const canSubmitResult =
     Boolean(lobby && canManageLobby(lobby, currentUser?.id))
     && lobby?.gameType === 'competitive'
-    && (lobby ? new Date(lobby.datetime) < new Date() : false)
+    && (lobby ? canSubmitLobbyResult(lobby.datetime) : false)
     && teams.length > 0
     && lobbyResult == null;
 
@@ -206,7 +207,14 @@ export default function LobbyDetailLive() {
     : `https://waze.com/ul?q=${encodeURIComponent(formatLocationLabel(resolvedLobby.address, resolvedLobby.city))}&navigate=yes`;
   const ballContributors = new Set(contributions.filter((c) => c.type === 'ball').map((c) => c.profileId));
   const speakerContributors = new Set(contributions.filter((c) => c.type === 'speaker').map((c) => c.profileId));
-  const gameHasPassed = new Date(resolvedLobby.datetime) < new Date();
+  const resultReminderAt = getLobbyResultReminderTime(resolvedLobby.datetime);
+  const resultReminderDateStr = formatDateTime(
+    resultReminderAt.toISOString(),
+    lang,
+    t.common.today,
+    t.common.tomorrow,
+  );
+  const resultSubmissionOpen = canSubmitLobbyResult(resolvedLobby.datetime);
   const hasMissingPreferredPosition = resolvedLobby.players.some((player) => !normalizePreferredPosition(player.position));
   const canGenerateTeams =
     canManageCurrentLobby
@@ -889,9 +897,13 @@ export default function LobbyDetailLive() {
               <p className={`mt-1 text-xs ${lobbyResult ? 'text-emerald-700' : 'text-amber-700'}`}>
                 {lobbyResult
                   ? (lang === 'he' ? 'התוצאה נשמרה והנקודות כבר חולקו לשחקנים.' : 'The result was saved and points were already awarded.')
-                  : gameHasPassed
+                  : resultSubmissionOpen
                     ? (lang === 'he' ? 'הזינו כמה ניצחונות היו לכל קבוצה כדי לחלק נקודות.' : 'Enter the number of wins for each team to award points.')
-                    : (lang === 'he' ? 'אפשר יהיה להזין תוצאה אחרי שהמשחק יעבור.' : 'You will be able to submit the result after the game starts.')}
+                    : (
+                        lang === 'he'
+                          ? `אפשר יהיה להזין תוצאה בערך שעתיים אחרי שעת הפתיחה המתוכננת (${resultReminderDateStr}).`
+                          : `You will be able to submit the result about two hours after kickoff (${resultReminderDateStr}).`
+                      )}
               </p>
             </div>
             {!lobbyResult && (

@@ -16,6 +16,12 @@ import { requireSupabase } from './supabase';
 import { getJoinLobbyError, getJoinLobbyTargetStatus, normalizeText, validateCreateLobbyPayload } from './validation';
 import { calculateCompetitiveStandings } from './competitiveResults';
 import { buildLobbyHistoryEntries, type LobbyHistoryMembershipRow } from './lobbyHistory';
+import {
+  buildPendingLobbyResultReminders,
+  canSubmitLobbyResult,
+  type LobbyResultReminderCandidate,
+  type PendingLobbyResultReminder,
+} from './lobbyResultReminders';
 import { canManageLobby } from './lobbyRoles';
 import { buildBalancedLobbyTeams } from './teamAssignment';
 import { buildWaitlistSyncPlan } from './waitlist';
@@ -223,6 +229,15 @@ type LobbyMessageRow = {
 type LobbyOrganizerRow = {
   lobby_id: string;
   profile_id: string;
+};
+
+type LobbyResultReminderLobbyRow = {
+  id: string;
+  title: string;
+  datetime: string;
+  created_by: string;
+  game_type: GameType;
+  status?: 'active' | 'deleted' | 'expired' | null;
 };
 
 function resolveLobbyStatus(row: LobbyRow): LobbyStatus {
@@ -1284,6 +1299,122 @@ export async function fetchLobbyResult(lobbyId: string): Promise<LobbyResultSumm
   };
 }
 
+export async function fetchPendingLobbyResultReminders(profileId: string): Promise<PendingLobbyResultReminder[]> {
+  const supabase = requireSupabase();
+  const [
+    { data: ownedLobbyRows, error: ownedLobbiesError },
+    { data: organizerRows, error: organizerRowsError },
+  ] = await Promise.all([
+    supabase
+      .from('lobbies')
+      .select('id')
+      .eq('created_by', profileId)
+      .eq('game_type', 'competitive'),
+    supabase
+      .from('lobby_organizers')
+      .select('lobby_id, profile_id')
+      .eq('profile_id', profileId),
+  ]);
+
+  if (ownedLobbiesError) {
+    throw ownedLobbiesError;
+  }
+  if (organizerRowsError && !isMissingLobbyOrganizersTableError(organizerRowsError)) {
+    throw organizerRowsError;
+  }
+
+  const organizerLobbyIds = ((organizerRows ?? []) as LobbyOrganizerRow[]).map((row) => row.lobby_id);
+  const ownedLobbyIds = ((ownedLobbyRows ?? []) as Array<{ id: string }>).map((row) => row.id);
+  const candidateLobbyIds = [...new Set([...ownedLobbyIds, ...organizerLobbyIds])];
+
+  if (candidateLobbyIds.length === 0) {
+    return [];
+  }
+
+  const withStatus = await supabase
+    .from('lobbies')
+    .select('id, title, datetime, created_by, game_type, status')
+    .in('id', candidateLobbyIds);
+
+  let lobbyRows: LobbyResultReminderLobbyRow[];
+  if (!withStatus.error) {
+    lobbyRows = (withStatus.data ?? []) as LobbyResultReminderLobbyRow[];
+  } else if (isMissingLobbyOptionalColumnError(withStatus.error)) {
+    const fallback = await supabase
+      .from('lobbies')
+      .select('id, title, datetime, created_by, game_type')
+      .in('id', candidateLobbyIds);
+
+    if (fallback.error) {
+      throw fallback.error;
+    }
+
+    lobbyRows = ((fallback.data ?? []) as LobbyResultReminderLobbyRow[]).map((row) => ({
+      ...row,
+      status: 'active',
+    }));
+  } else {
+    throw withStatus.error;
+  }
+
+  const [
+    { data: membershipRows, error: membershipRowsError },
+    { data: teamRows, error: teamRowsError },
+    { data: resultRows, error: resultRowsError },
+  ] = await Promise.all([
+    supabase
+      .from('lobby_memberships')
+      .select('lobby_id, status')
+      .eq('profile_id', profileId)
+      .eq('status', 'joined')
+      .in('lobby_id', candidateLobbyIds),
+    supabase
+      .from('lobby_teams')
+      .select('lobby_id')
+      .in('lobby_id', candidateLobbyIds),
+    supabase
+      .from('lobby_results')
+      .select('lobby_id')
+      .in('lobby_id', candidateLobbyIds),
+  ]);
+
+  if (membershipRowsError) {
+    throw membershipRowsError;
+  }
+  if (teamRowsError) {
+    throw teamRowsError;
+  }
+  if (resultRowsError) {
+    throw resultRowsError;
+  }
+
+  const joinedOrganizerLobbyIds = new Set(
+    ((membershipRows ?? []) as Array<{ lobby_id: string; status: MembershipRow['status'] }>).map((row) => row.lobby_id),
+  );
+  const resultLobbyIds = new Set(
+    ((resultRows ?? []) as Array<{ lobby_id: string }>).map((row) => row.lobby_id),
+  );
+  const teamCountByLobbyId = new Map<string, number>();
+
+  for (const row of (teamRows ?? []) as Array<{ lobby_id: string }>) {
+    teamCountByLobbyId.set(row.lobby_id, (teamCountByLobbyId.get(row.lobby_id) ?? 0) + 1);
+  }
+
+  const reminderCandidates: LobbyResultReminderCandidate[] = lobbyRows
+    .filter((row) => row.status !== 'deleted')
+    .map((row) => ({
+      lobbyId: row.id,
+      lobbyTitle: row.title,
+      lobbyDatetime: row.datetime,
+      gameType: row.game_type ?? 'friendly',
+      isManagedByViewer: row.created_by === profileId || joinedOrganizerLobbyIds.has(row.id),
+      hasResult: resultLobbyIds.has(row.id),
+      teamCount: teamCountByLobbyId.get(row.id) ?? 0,
+    }));
+
+  return buildPendingLobbyResultReminders(reminderCandidates);
+}
+
 export async function fetchCompetitivePointHistory(profileId: string): Promise<CompetitivePointHistoryEntry[]> {
   const supabase = requireSupabase();
   const { data: eventRows, error: eventsError } = await supabase
@@ -1370,8 +1501,8 @@ export async function submitCompetitiveLobbyResult(
     throw new Error('Results are only available for competitive lobbies.');
   }
 
-  if (new Date(lobby.datetime) > new Date()) {
-    throw new Error('You can submit the result only after the game starts.');
+  if (!canSubmitLobbyResult(lobby.datetime)) {
+    throw new Error('You can submit the result about two hours after the scheduled kickoff.');
   }
 
   const [existingResult, teamAssignments] = await Promise.all([
