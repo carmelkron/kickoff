@@ -7,6 +7,9 @@ type NotificationKind =
   | 'friend_request_accepted'
   | 'friend_request_declined'
   | 'friend_joined_lobby'
+  | 'lobby_join_request'
+  | 'lobby_join_request_approved'
+  | 'lobby_join_request_declined'
   | 'waitlist_spot_opened'
   | 'lobby_invite'
   | 'competitive_result'
@@ -130,6 +133,50 @@ function mapNotification(row: NotificationRow, lang: Language): AppNotification 
       createdAt: row.created_at,
       lobbyId: row.lobby_id ?? undefined,
       profileId: row.actor_profile_id ?? undefined,
+    };
+  }
+
+  if (row.kind === 'lobby_join_request') {
+    const requesterName = readString(row.data, 'requesterName');
+    const lobbyTitle = readString(row.data, 'lobbyTitle');
+    return {
+      id: row.id,
+      kind: row.kind,
+      title: isHebrew ? 'בקשת כניסה חדשה ללובי' : 'New lobby access request',
+      message: requesterName && lobbyTitle
+        ? (isHebrew
+            ? `${requesterName} ביקש/ה להיכנס ל-${lobbyTitle}.`
+            : `${requesterName} requested access to ${lobbyTitle}.`)
+        : (isHebrew
+            ? 'יש בקשת כניסה חדשה ללובי שלך.'
+            : 'There is a new access request for your lobby.'),
+      isRead: row.is_read,
+      createdAt: row.created_at,
+      lobbyId: row.lobby_id ?? undefined,
+      profileId: row.actor_profile_id ?? undefined,
+      requesterId: row.actor_profile_id ?? undefined,
+    };
+  }
+
+  if (row.kind === 'lobby_join_request_approved' || row.kind === 'lobby_join_request_declined') {
+    const lobbyTitle = readString(row.data, 'lobbyTitle');
+    const approved = row.kind === 'lobby_join_request_approved';
+    return {
+      id: row.id,
+      kind: row.kind,
+      title: approved
+        ? (isHebrew ? 'בקשת הכניסה אושרה' : 'Lobby access approved')
+        : (isHebrew ? 'בקשת הכניסה נדחתה' : 'Lobby access declined'),
+      message: lobbyTitle
+        ? (approved
+            ? (isHebrew ? `הבקשה שלך ל-${lobbyTitle} אושרה. עכשיו אפשר להיכנס ללובי.` : `Your request for ${lobbyTitle} was approved. You can enter the lobby now.`)
+            : (isHebrew ? `הבקשה שלך ל-${lobbyTitle} נדחתה.` : `Your request for ${lobbyTitle} was declined.`))
+        : (approved
+            ? (isHebrew ? 'בקשת הכניסה שלך אושרה.' : 'Your access request was approved.')
+            : (isHebrew ? 'בקשת הכניסה שלך נדחתה.' : 'Your access request was declined.')),
+      isRead: row.is_read,
+      createdAt: row.created_at,
+      lobbyId: row.lobby_id ?? undefined,
     };
   }
 
@@ -405,6 +452,60 @@ export async function createFriendJoinedLobbyNotifications(actorId: string, acto
     }));
 
   await insertNotifications(rows);
+}
+
+export async function createLobbyJoinRequestNotification(
+  actorId: string,
+  actorName: string,
+  recipientId: string,
+  lobby: Lobby,
+) {
+  await insertNotifications([
+    {
+      profile_id: recipientId,
+      actor_profile_id: actorId,
+      lobby_id: lobby.id,
+      kind: 'lobby_join_request',
+      data: {
+        requesterName: actorName,
+        lobbyTitle: lobby.title,
+      },
+    },
+  ]);
+}
+
+export async function createLobbyJoinRequestResolutionNotification(
+  actorId: string,
+  recipientId: string,
+  lobby: Lobby,
+  outcome: 'approved' | 'declined',
+) {
+  await insertNotifications([
+    {
+      profile_id: recipientId,
+      actor_profile_id: actorId,
+      lobby_id: lobby.id,
+      kind: outcome === 'approved' ? 'lobby_join_request_approved' : 'lobby_join_request_declined',
+      data: {
+        lobbyTitle: lobby.title,
+      },
+    },
+  ]);
+}
+
+export async function markLobbyJoinRequestNotificationsHandled(requesterId: string, lobbyId: string, recipientId: string) {
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true })
+    .eq('profile_id', recipientId)
+    .eq('actor_profile_id', requesterId)
+    .eq('lobby_id', lobbyId)
+    .eq('kind', 'lobby_join_request');
+
+  if (error && !isMissingNotificationsTableError(error)) {
+    throw error;
+  }
 }
 
 export async function createWaitlistSpotOpenedNotifications(

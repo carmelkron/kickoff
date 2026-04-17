@@ -9,6 +9,7 @@ export type LobbyStatus = 'active' | 'deleted' | 'expired';
 export type LobbyAccessType = 'open' | 'locked';
 export type TeamColor = 'blue' | 'yellow' | 'red' | 'green';
 export type LobbyInviteStatus = 'pending' | 'accepted' | 'revoked';
+export type LobbyJoinRequestStatus = 'pending' | 'approved' | 'declined';
 
 export interface RatingEntry {
   date: string;
@@ -74,6 +75,7 @@ export interface Lobby {
   viewerHasAccess: boolean;
   viewerIsInvited: boolean;
   viewerHasFriendInside: boolean;
+  viewerJoinRequestStatus?: LobbyJoinRequestStatus | null;
 }
 
 export interface LobbyInvite {
@@ -84,6 +86,16 @@ export interface LobbyInvite {
   status: LobbyInviteStatus;
   createdAt: string;
   invitedPlayer: Player;
+}
+
+export interface LobbyJoinRequest {
+  id: string;
+  lobbyId: string;
+  requesterProfileId: string;
+  status: LobbyJoinRequestStatus;
+  createdAt: string;
+  respondedAt?: string;
+  requester: Player;
 }
 
 export interface LobbyTeam {

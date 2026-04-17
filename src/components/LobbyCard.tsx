@@ -63,6 +63,11 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
                 {lang === 'he' ? 'נעול' : 'Locked'}
               </span>
             )}
+            {lobby.accessType === 'locked' && !lobby.viewerHasAccess && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">
+                {lang === 'he' ? 'דורש אישור' : 'Approval required'}
+              </span>
+            )}
           </div>
         </div>
         {avg !== null && lobby.gameType === 'competitive' && (

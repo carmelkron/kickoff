@@ -1,12 +1,15 @@
-import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry, LobbyAccessType, LobbyInvite, LobbyInviteStatus } from '../types';
+import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry, LobbyAccessType, LobbyInvite, LobbyInviteStatus, LobbyJoinRequest, LobbyJoinRequestStatus } from '../types';
 import {
   createCompetitiveResultNotifications,
   createFriendJoinedLobbyNotifications,
   createLobbyInviteNotification,
+  createLobbyJoinRequestNotification,
+  createLobbyJoinRequestResolutionNotification,
   createOrganizerSummaryNotification,
   createTeamAssignedNotifications,
   createWaitlistSpotOpenedNotifications,
   fetchAcceptedFriendIds,
+  markLobbyJoinRequestNotificationsHandled,
   markWaitlistSpotNotificationsHandled,
 } from './appNotifications';
 import { requireSupabase } from './supabase';
@@ -61,6 +64,16 @@ function isMissingLobbyOptionalColumnError(error: unknown) {
     text.includes('column')
     || text.includes('schema cache')
     || text.includes('could not find')
+  );
+}
+
+function isMissingLobbyJoinRequestsTableError(error: unknown) {
+  const text = getErrorText(error).toLowerCase();
+  return text.includes('lobby_join_requests') && (
+    text.includes('does not exist')
+    || text.includes('schema cache')
+    || text.includes('could not find')
+    || text.includes('relation')
   );
 }
 
@@ -161,6 +174,16 @@ type LobbyInviteRow = {
   invited_by_profile_id: string;
   status: LobbyInviteStatus;
   created_at: string;
+};
+
+type LobbyJoinRequestRow = {
+  id: string;
+  lobby_id: string;
+  requester_profile_id: string;
+  status: LobbyJoinRequestStatus;
+  created_at: string;
+  responded_at: string | null;
+  responded_by_profile_id: string | null;
 };
 
 function resolveLobbyStatus(row: LobbyRow): LobbyStatus {
@@ -398,7 +421,7 @@ export async function updateProfile(input: UpdateProfileInput) {
 export async function fetchLobbies(): Promise<Lobby[]> {
   const supabase = requireSupabase();
   const currentProfileId = await fetchCurrentProfileId();
-  const [friendIds, inviteRows] = await Promise.all([
+  const [friendIds, inviteRows, joinRequestRows] = await Promise.all([
     currentProfileId ? fetchAcceptedFriendIds(currentProfileId) : Promise.resolve<string[]>([]),
     currentProfileId
       ? supabase
@@ -407,6 +430,12 @@ export async function fetchLobbies(): Promise<Lobby[]> {
           .eq('invited_profile_id', currentProfileId)
           .neq('status', 'revoked')
       : Promise.resolve({ data: [] as LobbyInviteRow[], error: null }),
+    currentProfileId
+      ? supabase
+          .from('lobby_join_requests')
+          .select('id, lobby_id, requester_profile_id, status, created_at, responded_at, responded_by_profile_id')
+          .eq('requester_profile_id', currentProfileId)
+      : Promise.resolve({ data: [] as LobbyJoinRequestRow[], error: null }),
   ]);
 
   const [{ data: lobbyRows, error: lobbiesError }, { data: profileRows, error: profilesError }, { data: membershipRows, error: membershipsError }] = await Promise.all([
@@ -431,11 +460,17 @@ export async function fetchLobbies(): Promise<Lobby[]> {
   if (inviteRows.error) {
     throw inviteRows.error;
   }
+  if (joinRequestRows.error && !isMissingLobbyJoinRequestsTableError(joinRequestRows.error)) {
+    throw joinRequestRows.error;
+  }
 
   const playersById = new Map<string, Player>(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
   const membershipsByLobby = new Map<string, MembershipRow[]>();
   const viewerInviteStatusByLobbyId = new Map<string, LobbyInviteStatus>(
     ((inviteRows.data ?? []) as LobbyInviteRow[]).map((row) => [row.lobby_id, row.status]),
+  );
+  const viewerJoinRequestStatusByLobbyId = new Map<string, LobbyJoinRequestStatus>(
+    ((joinRequestRows.data ?? []) as LobbyJoinRequestRow[]).map((row) => [row.lobby_id, row.status]),
   );
   const friendIdsSet = new Set(friendIds);
 
@@ -515,8 +550,9 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       viewerHasAccess: access.canAccess,
       viewerIsInvited: access.isInvited,
       viewerHasFriendInside: access.hasFriendInside,
+      viewerJoinRequestStatus: viewerJoinRequestStatusByLobbyId.get(row.id) ?? null,
     };
-  }).filter((lobby) => lobby.status !== 'deleted' && lobby.viewerHasAccess);
+  }).filter((lobby) => lobby.status !== 'deleted');
 }
 
 export async function fetchLobbyById(id: string): Promise<Lobby | null> {
@@ -572,6 +608,64 @@ export async function fetchLobbyInvites(lobbyId: string): Promise<LobbyInvite[]>
       };
     })
     .filter((invite): invite is LobbyInvite => Boolean(invite));
+}
+
+export async function fetchLobbyJoinRequests(lobbyId: string): Promise<LobbyJoinRequest[]> {
+  const supabase = requireSupabase();
+  const { data: requestRows, error: requestsError } = await supabase
+    .from('lobby_join_requests')
+    .select('id, lobby_id, requester_profile_id, status, created_at, responded_at, responded_by_profile_id')
+    .eq('lobby_id', lobbyId)
+    .order('created_at', { ascending: false });
+
+  if (requestsError) {
+    if (isMissingLobbyJoinRequestsTableError(requestsError)) {
+      return [];
+    }
+    throw requestsError;
+  }
+
+  const requests = (requestRows ?? []) as LobbyJoinRequestRow[];
+  if (requests.length === 0) {
+    return [];
+  }
+
+  const profileIds = [...new Set(requests.map((request) => request.requester_profile_id))];
+  const { data: profileRows, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history')
+    .in('id', profileIds);
+
+  if (profilesError) {
+    throw profilesError;
+  }
+
+  const playersById = new Map(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
+
+  return requests
+    .map((request) => {
+      const requester = playersById.get(request.requester_profile_id);
+      if (!requester) {
+        return null;
+      }
+
+      const mappedRequest = {
+        id: request.id,
+        lobbyId: request.lobby_id,
+        requesterProfileId: request.requester_profile_id,
+        status: request.status,
+        createdAt: request.created_at,
+        requester,
+      };
+
+      return request.responded_at
+        ? {
+            ...mappedRequest,
+            respondedAt: request.responded_at,
+          }
+        : mappedRequest;
+    })
+    .filter((request): request is LobbyJoinRequest => request !== null);
 }
 
 function mapLobbyTeam(row: LobbyTeamRow): LobbyTeam {
@@ -1410,6 +1504,144 @@ export async function createLobbyInvite(lobbyId: string, invitedByProfileId: str
   }
 
   await createLobbyInviteNotification(invitedByProfileId, inviter.name, invitedProfileId, lobby);
+}
+
+export async function requestLobbyAccess(lobbyId: string, requesterProfileId: string) {
+  const supabase = requireSupabase();
+  const [lobby, requester] = await Promise.all([
+    fetchLobbyById(lobbyId),
+    fetchProfileById(requesterProfileId),
+  ]);
+
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (!requester) {
+    throw new Error('Failed to resolve the requesting player.');
+  }
+
+  if (lobby.accessType !== 'locked') {
+    throw new Error('Access requests are available only for locked lobbies.');
+  }
+
+  if (lobby.createdBy === requesterProfileId) {
+    throw new Error('You already manage this lobby.');
+  }
+
+  if (lobby.viewerHasAccess) {
+    throw new Error('You already have access to this lobby.');
+  }
+
+  if (lobby.players.some((player) => player.id === requesterProfileId) || lobby.waitlist.some((player) => player.id === requesterProfileId)) {
+    throw new Error('You are already part of this lobby.');
+  }
+
+  if (lobby.viewerJoinRequestStatus === 'pending') {
+    throw new Error('You already have a pending request for this lobby.');
+  }
+
+  const { error } = await supabase.from('lobby_join_requests').upsert(
+    {
+      lobby_id: lobbyId,
+      requester_profile_id: requesterProfileId,
+      status: 'pending',
+      responded_at: null,
+      responded_by_profile_id: null,
+    },
+    { onConflict: 'lobby_id,requester_profile_id' },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  await createLobbyJoinRequestNotification(requesterProfileId, requester.name, lobby.createdBy, lobby);
+}
+
+export async function approveLobbyJoinRequest(lobbyId: string, requesterProfileId: string, actorProfileId: string) {
+  const supabase = requireSupabase();
+  const [lobby, requester] = await Promise.all([
+    fetchLobbyById(lobbyId),
+    fetchProfileById(requesterProfileId),
+  ]);
+
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (!requester) {
+    throw new Error('Failed to resolve the requesting player.');
+  }
+
+  if (lobby.createdBy !== actorProfileId) {
+    throw new Error('Only the lobby creator can approve access requests.');
+  }
+
+  const timestamp = new Date().toISOString();
+  const { error: requestError } = await supabase
+    .from('lobby_join_requests')
+    .update({
+      status: 'approved',
+      responded_at: timestamp,
+      responded_by_profile_id: actorProfileId,
+    })
+    .eq('lobby_id', lobbyId)
+    .eq('requester_profile_id', requesterProfileId)
+    .eq('status', 'pending');
+
+  if (requestError) {
+    throw requestError;
+  }
+
+  const { error: inviteError } = await supabase.from('lobby_invites').upsert(
+    {
+      lobby_id: lobbyId,
+      invited_profile_id: requesterProfileId,
+      invited_by_profile_id: actorProfileId,
+      status: 'pending',
+    },
+    { onConflict: 'lobby_id,invited_profile_id' },
+  );
+
+  if (inviteError) {
+    throw inviteError;
+  }
+
+  await markLobbyJoinRequestNotificationsHandled(requesterProfileId, lobbyId, actorProfileId);
+  await createLobbyJoinRequestResolutionNotification(actorProfileId, requesterProfileId, lobby, 'approved');
+}
+
+export async function declineLobbyJoinRequest(lobbyId: string, requesterProfileId: string, actorProfileId: string) {
+  const supabase = requireSupabase();
+  const lobby = await fetchLobbyById(lobbyId);
+
+  if (!lobby) {
+    throw new Error('Lobby not found.');
+  }
+
+  if (lobby.createdBy !== actorProfileId) {
+    throw new Error('Only the lobby creator can decline access requests.');
+  }
+
+  const timestamp = new Date().toISOString();
+  const { error } = await supabase
+    .from('lobby_join_requests')
+    .update({
+      status: 'declined',
+      responded_at: timestamp,
+      responded_by_profile_id: actorProfileId,
+    })
+    .eq('lobby_id', lobbyId)
+    .eq('requester_profile_id', requesterProfileId)
+    .eq('status', 'pending');
+
+  if (error) {
+    throw error;
+  }
+
+  await markLobbyJoinRequestNotificationsHandled(requesterProfileId, lobbyId, actorProfileId);
+  await createLobbyJoinRequestResolutionNotification(actorProfileId, requesterProfileId, lobby, 'declined');
 }
 
 export async function deleteLobbyMembership(lobbyId: string, profileId: string) {

@@ -11,7 +11,7 @@ import {
   markNotificationRead,
   type AppNotification,
 } from '../lib/appNotifications';
-import { passLobbyWaitlistSpot, upsertLobbyMembership } from '../lib/appData';
+import { approveLobbyJoinRequest, declineLobbyJoinRequest, passLobbyWaitlistSpot, upsertLobbyMembership } from '../lib/appData';
 import { requireSupabase } from '../lib/supabase';
 
 export default function Navbar() {
@@ -27,6 +27,7 @@ export default function Navbar() {
   const [deletingNotificationId, setDeletingNotificationId] = useState('');
   const [clearingNotifications, setClearingNotifications] = useState(false);
   const [handledRequestActions, setHandledRequestActions] = useState<Record<string, 'accept' | 'decline'>>({});
+  const [handledLobbyRequestActions, setHandledLobbyRequestActions] = useState<Record<string, 'accept' | 'decline'>>({});
   const [handledWaitlistActions, setHandledWaitlistActions] = useState<Record<string, 'join' | 'pass'>>({});
   const notificationRef = useRef<HTMLDivElement | null>(null);
 
@@ -42,6 +43,7 @@ export default function Navbar() {
     if (!currentUser) {
       setNotifications([]);
       setHandledRequestActions({});
+      setHandledLobbyRequestActions({});
       setHandledWaitlistActions({});
       return;
     }
@@ -163,6 +165,11 @@ export default function Navbar() {
         delete next[notificationId];
         return next;
       });
+      setHandledLobbyRequestActions((current) => {
+        const next = { ...current };
+        delete next[notificationId];
+        return next;
+      });
       setHandledWaitlistActions((current) => {
         const next = { ...current };
         delete next[notificationId];
@@ -186,6 +193,7 @@ export default function Navbar() {
       await deleteAllNotifications(currentUser.id);
       setNotifications([]);
       setHandledRequestActions({});
+      setHandledLobbyRequestActions({});
       setHandledWaitlistActions({});
     } catch (error) {
       setNotificationActionError(error instanceof Error ? error.message : 'Delete failed');
@@ -226,6 +234,31 @@ export default function Navbar() {
         await declineFriendRequest(notification.requesterId);
       }
       setHandledRequestActions((current) => ({
+        ...current,
+        [notification.id]: action,
+      }));
+      await refreshNotifications();
+    } catch (error) {
+      setNotificationActionError(error instanceof Error ? error.message : 'Action failed');
+    } finally {
+      setBusyNotificationId('');
+    }
+  }
+
+  async function handleLobbyJoinRequest(action: 'accept' | 'decline', notification: AppNotification) {
+    if (!currentUser || !notification.lobbyId || !notification.requesterId) {
+      return;
+    }
+
+    setBusyNotificationId(notification.id);
+    setNotificationActionError('');
+    try {
+      if (action === 'accept') {
+        await approveLobbyJoinRequest(notification.lobbyId, notification.requesterId, currentUser.id);
+      } else {
+        await declineLobbyJoinRequest(notification.lobbyId, notification.requesterId, currentUser.id);
+      }
+      setHandledLobbyRequestActions((current) => ({
         ...current,
         [notification.id]: action,
       }));
@@ -351,6 +384,7 @@ export default function Navbar() {
                       ) : (
                         notifications.map((notification) => {
                           const handledAction = handledRequestActions[notification.id];
+                          const handledLobbyRequestAction = handledLobbyRequestActions[notification.id];
                           const handledWaitlistAction = handledWaitlistActions[notification.id];
                           return (
                             <div
@@ -420,6 +454,44 @@ export default function Navbar() {
                                   >
                                     <Check size={13} />
                                     {handledAction === 'accept' ? t.nav.requestAccepted : t.nav.requestDeclined}
+                                  </span>
+                                </div>
+                              )}
+
+                              {notification.kind === 'lobby_join_request' && notification.requesterId && notification.lobbyId && !handledLobbyRequestAction && (
+                                <div className="mt-3 ms-5 flex items-center gap-2">
+                                  <button
+                                    onClick={() => void handleLobbyJoinRequest('accept', notification)}
+                                    disabled={busyNotificationId === notification.id}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-semibold rounded-lg transition-colors"
+                                  >
+                                    <UserCheck size={13} />
+                                    {lang === 'he' ? 'אשר' : 'Approve'}
+                                  </button>
+                                  <button
+                                    onClick={() => void handleLobbyJoinRequest('decline', notification)}
+                                    disabled={busyNotificationId === notification.id}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-60 text-gray-600 text-xs font-semibold rounded-lg transition-colors"
+                                  >
+                                    <UserX size={13} />
+                                    {lang === 'he' ? 'דחה' : 'Decline'}
+                                  </button>
+                                </div>
+                              )}
+
+                              {notification.kind === 'lobby_join_request' && handledLobbyRequestAction && (
+                                <div className="mt-3 ms-5">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg ${
+                                      handledLobbyRequestAction === 'accept'
+                                        ? 'bg-green-50 text-green-700 border border-green-200'
+                                        : 'bg-gray-50 text-gray-600 border border-gray-200'
+                                    }`}
+                                  >
+                                    <Check size={13} />
+                                    {handledLobbyRequestAction === 'accept'
+                                      ? (lang === 'he' ? 'בקשת הכניסה אושרה' : 'Access request approved')
+                                      : (lang === 'he' ? 'בקשת הכניסה נדחתה' : 'Access request declined')}
                                   </span>
                                 </div>
                               )}

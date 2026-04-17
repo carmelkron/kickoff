@@ -3,9 +3,9 @@ import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, Lock, MapPin,
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { createLobbyInvite, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
+import { approveLobbyJoinRequest, createLobbyInvite, declineLobbyJoinRequest, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyJoinRequests, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, requestLobbyAccess, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
 import { getJoinLobbyError } from '../lib/validation';
-import type { ContributionType, Lobby, LobbyInvite, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
+import type { ContributionType, Lobby, LobbyInvite, LobbyJoinRequest, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
 import { formatDateTime } from '../utils/format';
 import { getDistanceSourceText, loadSessionDistancePreference } from '../utils/distanceSource';
 import { haversineKm } from '../utils/geo';
@@ -57,6 +57,7 @@ export default function LobbyDetailLive() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [contributions, setContributions] = useState<{ profileId: string; type: ContributionType }[]>([]);
   const [invites, setInvites] = useState<LobbyInvite[]>([]);
+  const [joinRequests, setJoinRequests] = useState<LobbyJoinRequest[]>([]);
   const [teams, setTeams] = useState<LobbyTeamAssignment[]>([]);
   const [distancePreference, setDistancePreference] = useState(() => loadSessionDistancePreference());
   const [generatingTeams, setGeneratingTeams] = useState(false);
@@ -90,9 +91,14 @@ export default function LobbyDetailLive() {
         nextLobby && currentUser?.id === nextLobby.createdBy
           ? await fetchLobbyInvites(id)
           : [];
+      const nextJoinRequests =
+        nextLobby && currentUser?.id === nextLobby.createdBy && nextLobby.accessType === 'locked'
+          ? await fetchLobbyJoinRequests(id)
+          : [];
       setLobby(nextLobby);
       setContributions(nextContributions);
       setInvites(nextLobby?.accessType === 'locked' ? nextInvites : []);
+      setJoinRequests(nextJoinRequests.filter((request) => request.status === 'pending'));
       setTeams(nextTeams);
       setLobbyResult(nextResult);
       setResultNotes(nextResult?.notes ?? '');
@@ -168,6 +174,11 @@ export default function LobbyDetailLive() {
   const isCreator = currentUser?.id === resolvedLobby.createdBy;
   const isLobbyActive = resolvedLobby.status === 'active';
   const isLobbyExpired = resolvedLobby.status === 'expired';
+  const viewerJoinRequestStatus = resolvedLobby.viewerJoinRequestStatus ?? null;
+  const viewerCanRequestAccess =
+    resolvedLobby.accessType === 'locked'
+    && !resolvedLobby.viewerHasAccess
+    && !isCreator;
   const hasCoords = resolvedLobby.latitude != null && resolvedLobby.longitude != null;
   const hasCurrentLocation =
     distancePreference.locationMode === 'current' && distancePreference.currentCoords != null;
@@ -276,6 +287,11 @@ export default function LobbyDetailLive() {
       return;
     }
 
+    if (viewerCanRequestAccess) {
+      void runMembershipAction(() => requestLobbyAccess(lobbyId, currentUser.id));
+      return;
+    }
+
     const joinError = getJoinLobbyError(resolvedLobby, currentUser);
     if (joinError) {
       setError(joinError);
@@ -373,6 +389,27 @@ export default function LobbyDetailLive() {
       setError(nextError instanceof Error ? nextError.message : 'Failed to send invite');
     } finally {
       setInvitingProfileId('');
+    }
+  }
+
+  async function handleJoinRequestAction(action: 'approve' | 'decline', requesterProfileId: string) {
+    if (!currentUser) {
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      if (action === 'approve') {
+        await approveLobbyJoinRequest(lobbyId, requesterProfileId, currentUser.id);
+      } else {
+        await declineLobbyJoinRequest(lobbyId, requesterProfileId, currentUser.id);
+      }
+      await loadLobby();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Failed to update access request');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -507,14 +544,19 @@ export default function LobbyDetailLive() {
               </p>
               <p className="mt-1 text-sm text-gray-600">
                 {lang === 'he'
-                  ? 'רק משתתפים, מוזמנים, או חברים של מי שכבר בפנים יכולים להיכנס ללובי הזה.'
-                  : 'Only participants, invited players, or friends of players already inside can access this lobby.'}
+                  ? 'כולם יכולים לראות את הלובי. כדי להיכנס צריך גישה: משתתפים, מוזמנים, חברים של מי שכבר בפנים, או אישור מהמארגן.'
+                  : 'Everyone can view this lobby. Entering requires access: participants, invited players, friends of current participants, or organizer approval.'}
               </p>
               {(resolvedLobby.viewerIsInvited || resolvedLobby.viewerHasFriendInside) && (
                 <p className="mt-2 text-xs font-medium text-primary-700">
                   {resolvedLobby.viewerIsInvited
                     ? (lang === 'he' ? 'יש לכם הזמנה פעילה ללובי הזה.' : 'You have an active invitation to this lobby.')
                     : (lang === 'he' ? 'יש לכם חבר/ה שכבר בפנים, ולכן הלובי פתוח עבורכם.' : 'A friend of yours is already inside, so this lobby is available to you.')}
+                </p>
+              )}
+              {viewerCanRequestAccess && viewerJoinRequestStatus === 'pending' && (
+                <p className="mt-2 text-xs font-medium text-amber-700">
+                  {lang === 'he' ? 'כבר שלחתם בקשת כניסה. מחכים לאישור המארגן.' : 'You already sent an access request. Waiting for organizer approval.'}
                 </p>
               )}
             </div>
@@ -627,6 +669,64 @@ export default function LobbyDetailLive() {
                   : 'There are no available friends to invite to this lobby right now.'}
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {isCreator && resolvedLobby.accessType === 'locked' && joinRequests.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-900">
+                {lang === 'he' ? 'בקשות כניסה ללובי' : 'Lobby access requests'}
+              </p>
+              <p className="mt-1 text-xs text-amber-700">
+                {lang === 'he'
+                  ? 'שחקנים שאין להם גישה ללובי יכולים לשלוח בקשה, ואתם מאשרים או דוחים מכאן.'
+                  : 'Players without access can send requests here, and you can approve or decline them from this panel.'}
+              </p>
+            </div>
+            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-amber-700">
+              {lang === 'he' ? `${joinRequests.length} ממתינים` : `${joinRequests.length} pending`}
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {joinRequests.map((request) => (
+              <div key={request.id} className="flex items-center gap-3 rounded-2xl bg-white px-3 py-2">
+                {request.requester.photoUrl ? (
+                  <img src={request.requester.photoUrl} alt={request.requester.name} className="h-9 w-9 rounded-full object-cover" />
+                ) : (
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-full ${request.requester.avatarColor} text-xs font-bold text-white`}>
+                    {request.requester.initials}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-gray-800">{request.requester.name}</p>
+                  <p className="text-xs text-gray-400">
+                    {lang === 'he' ? 'מבקש/ת גישה ללובי' : 'Requested access to this lobby'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleJoinRequestAction('approve', request.requesterProfileId)}
+                    disabled={saving}
+                    className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {lang === 'he' ? 'אשר' : 'Approve'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleJoinRequestAction('decline', request.requesterProfileId)}
+                    disabled={saving}
+                    className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {lang === 'he' ? 'דחה' : 'Decline'}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1206,12 +1306,22 @@ export default function LobbyDetailLive() {
           {myStatus === 'none' && (
             <button
               onClick={handleJoin}
-              disabled={saving}
+              disabled={saving || (viewerCanRequestAccess && (viewerJoinRequestStatus === 'pending' || viewerJoinRequestStatus === 'declined'))}
               className={`w-full py-4 rounded-2xl font-semibold text-base transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-60 ${
-                isFull ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-primary-600 hover:bg-primary-700 text-white'
+                viewerCanRequestAccess
+                  ? 'bg-gray-900 hover:bg-black text-white'
+                  : isFull ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-primary-600 hover:bg-primary-700 text-white'
               }`}
             >
-              {isFull ? (lang === 'he' ? '+ הצטרף לרשימת ההמתנה' : '+ Join Waitlist') : t.lobby.join}
+              {viewerCanRequestAccess
+                ? (
+                  viewerJoinRequestStatus === 'pending'
+                    ? (lang === 'he' ? 'בקשת הכניסה נשלחה' : 'Access request sent')
+                    : viewerJoinRequestStatus === 'declined'
+                      ? (lang === 'he' ? 'בקשת הכניסה נדחתה' : 'Access request declined')
+                    : (lang === 'he' ? 'בקש להיכנס ללובי' : 'Request lobby access')
+                )
+                : isFull ? (lang === 'he' ? '+ הצטרף לרשימת ההמתנה' : '+ Join Waitlist') : t.lobby.join}
             </button>
           )}
 
