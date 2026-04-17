@@ -4,7 +4,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { approveLobbyJoinRequest, createLobbyInvite, declineLobbyJoinRequest, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyJoinRequests, fetchLobbyResult, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, requestLobbyAccess, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
-import { getJoinLobbyError } from '../lib/validation';
+import { getJoinLobbyError, getJoinLobbyTargetStatus } from '../lib/validation';
 import type { ContributionType, Lobby, LobbyInvite, LobbyJoinRequest, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
 import { formatDateTime } from '../utils/format';
 import { formatAgeRange } from '../utils/age';
@@ -302,7 +302,7 @@ export default function LobbyDetailLive() {
     }
 
     void runMembershipAction(() =>
-      upsertLobbyMembership(lobbyId, currentUser.id, isFull ? 'waitlisted' : 'joined'),
+      upsertLobbyMembership(lobbyId, currentUser.id, getJoinLobbyTargetStatus(resolvedLobby)),
     );
   }
 

@@ -13,8 +13,9 @@ import {
   markWaitlistSpotNotificationsHandled,
 } from './appNotifications';
 import { requireSupabase } from './supabase';
-import { getJoinLobbyError, normalizeText, validateCreateLobbyPayload } from './validation';
+import { getJoinLobbyError, getJoinLobbyTargetStatus, normalizeText, validateCreateLobbyPayload } from './validation';
 import { calculateCompetitiveStandings } from './competitiveResults';
+import { buildLobbyHistoryEntries, type LobbyHistoryMembershipRow } from './lobbyHistory';
 import { buildBalancedLobbyTeams } from './teamAssignment';
 import { buildWaitlistSyncPlan } from './waitlist';
 
@@ -388,6 +389,62 @@ export async function fetchProfileById(id: string): Promise<Player | null> {
   }
 
   return data ? mapProfile(data as ProfileRow) : null;
+}
+
+export async function fetchProfileLobbyHistory(profileId: string): Promise<LobbyHistoryEntry[]> {
+  const supabase = requireSupabase();
+  const { data: membershipRows, error: membershipsError } = await supabase
+    .from('lobby_memberships')
+    .select('lobby_id, status')
+    .eq('profile_id', profileId);
+
+  if (membershipsError) {
+    throw membershipsError;
+  }
+
+  const resolvedMembershipRows = (membershipRows ?? []) as LobbyHistoryMembershipRow[];
+  const joinedLobbyIds = [...new Set(
+    resolvedMembershipRows
+      .filter((membership) => membership.status === 'joined')
+      .map((membership) => membership.lobby_id),
+  )];
+
+  if (joinedLobbyIds.length === 0) {
+    return [];
+  }
+
+  const withStatus = await supabase
+    .from('lobbies')
+    .select('id, title, city, datetime, status')
+    .in('id', joinedLobbyIds);
+
+  if (!withStatus.error) {
+    return buildLobbyHistoryEntries(
+      resolvedMembershipRows,
+      (withStatus.data ?? []) as Array<Pick<LobbyRow, 'id' | 'title' | 'city' | 'datetime' | 'status'>>,
+    );
+  }
+
+  if (!isMissingLobbyOptionalColumnError(withStatus.error)) {
+    throw withStatus.error;
+  }
+
+  const fallback = await supabase
+    .from('lobbies')
+    .select('id, title, city, datetime')
+    .in('id', joinedLobbyIds);
+
+  if (fallback.error) {
+    throw fallback.error;
+  }
+
+  return buildLobbyHistoryEntries(
+    resolvedMembershipRows,
+    ((fallback.data ?? []) as Array<Pick<LobbyRow, 'id' | 'title' | 'city' | 'datetime'>>).map((row) => ({
+      ...row,
+      status: 'active',
+    })),
+  );
 }
 
 export type UpdateProfileInput = {
@@ -1595,6 +1652,24 @@ export async function approveLobbyJoinRequest(lobbyId: string, requesterProfileI
     throw new Error('Only the lobby creator can approve access requests.');
   }
 
+  if (lobby.players.some((player) => player.id === requesterProfileId) || lobby.waitlist.some((player) => player.id === requesterProfileId)) {
+    throw new Error('This player is already part of the lobby.');
+  }
+
+  const membershipStatus = getJoinLobbyTargetStatus(lobby);
+  const { error: membershipError } = await supabase.from('lobby_memberships').upsert(
+    {
+      lobby_id: lobbyId,
+      profile_id: requesterProfileId,
+      status: membershipStatus,
+    },
+    { onConflict: 'lobby_id,profile_id' },
+  );
+
+  if (membershipError) {
+    throw membershipError;
+  }
+
   const timestamp = new Date().toISOString();
   const { error: requestError } = await supabase
     .from('lobby_join_requests')
@@ -1611,22 +1686,13 @@ export async function approveLobbyJoinRequest(lobbyId: string, requesterProfileI
     throw requestError;
   }
 
-  const { error: inviteError } = await supabase.from('lobby_invites').upsert(
-    {
-      lobby_id: lobbyId,
-      invited_profile_id: requesterProfileId,
-      invited_by_profile_id: actorProfileId,
-      status: 'pending',
-    },
-    { onConflict: 'lobby_id,invited_profile_id' },
-  );
-
-  if (inviteError) {
-    throw inviteError;
+  const nextLobby = await syncLobbyWaitlistState(lobbyId, actorProfileId) ?? await fetchLobbyById(lobbyId);
+  if (nextLobby) {
+    await createOrganizerSummaryNotification(actorProfileId, nextLobby);
   }
 
   await markLobbyJoinRequestNotificationsHandled(requesterProfileId, lobbyId, actorProfileId);
-  await createLobbyJoinRequestResolutionNotification(actorProfileId, requesterProfileId, lobby, 'approved');
+  await createLobbyJoinRequestResolutionNotification(actorProfileId, requesterProfileId, lobby, 'approved', membershipStatus);
 }
 
 export async function declineLobbyJoinRequest(lobbyId: string, requesterProfileId: string, actorProfileId: string) {

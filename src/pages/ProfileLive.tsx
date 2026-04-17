@@ -3,9 +3,9 @@ import { ChevronLeft, Clock, MapPin, Pencil, Trophy, UserCheck, UserPlus, UserX,
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { fetchCompetitivePointHistory } from '../lib/appData';
+import { fetchCompetitivePointHistory, fetchProfileLobbyHistory } from '../lib/appData';
 import { getTeamColorLabel } from '../lib/teamAssignment';
-import type { AuthUser, CompetitivePointHistoryEntry, TeamColor } from '../types';
+import type { AuthUser, CompetitivePointHistoryEntry, LobbyHistoryEntry, TeamColor } from '../types';
 
 function teamColorClassName(color: TeamColor) {
   if (color === 'blue') {
@@ -40,6 +40,8 @@ export default function ProfileLive() {
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
   const [competitiveHistory, setCompetitiveHistory] = useState<CompetitivePointHistoryEntry[]>([]);
   const [loadingCompetitiveHistory, setLoadingCompetitiveHistory] = useState(false);
+  const [lobbyHistory, setLobbyHistory] = useState<LobbyHistoryEntry[]>([]);
+  const [loadingLobbyHistory, setLoadingLobbyHistory] = useState(false);
   const [historyView, setHistoryView] = useState<HistoryView>('competitive');
 
   const allUsers = getAllUsers();
@@ -74,6 +76,40 @@ export default function ProfileLive() {
     }
 
     void loadCompetitiveHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile) {
+      setLobbyHistory([]);
+      return;
+    }
+
+    const profileId = profile.id;
+    let cancelled = false;
+
+    async function loadLobbyHistory() {
+      setLoadingLobbyHistory(true);
+      try {
+        const nextHistory = await fetchProfileLobbyHistory(profileId);
+        if (!cancelled) {
+          setLobbyHistory(nextHistory);
+        }
+      } catch {
+        if (!cancelled) {
+          setLobbyHistory([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingLobbyHistory(false);
+        }
+      }
+    }
+
+    void loadLobbyHistory();
 
     return () => {
       cancelled = true;
@@ -153,7 +189,7 @@ export default function ProfileLive() {
       ? competitiveHistory.reduce((sum, entry) => sum + entry.points, 0)
       : profile.competitivePoints ?? 0;
   const hasCompetitiveHistory = loadingCompetitiveHistory || competitiveHistory.length > 0 || competitivePointsTotal > 0;
-  const hasLobbyHistory = profile.lobbyHistory.length > 0;
+  const hasLobbyHistory = loadingLobbyHistory || lobbyHistory.length > 0;
   const latestCompetitiveGain = competitiveHistory[0]?.points ?? null;
 
   const historyTabs = [
@@ -473,7 +509,7 @@ export default function ProfileLive() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
           <h2 className="font-semibold text-gray-900 mb-4">{lang === 'he' ? 'משחקים אחרונים' : 'Recent Games'}</h2>
           <div className="space-y-3">
-            {profile.lobbyHistory.map((entry, index) => (
+            {lobbyHistory.map((entry, index) => (
               <button
                 key={`${entry.lobbyId}-${index}`}
                 type="button"

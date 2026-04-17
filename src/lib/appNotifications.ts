@@ -161,6 +161,7 @@ function mapNotification(row: NotificationRow, lang: Language): AppNotification 
   if (row.kind === 'lobby_join_request_approved' || row.kind === 'lobby_join_request_declined') {
     const lobbyTitle = readString(row.data, 'lobbyTitle');
     const approved = row.kind === 'lobby_join_request_approved';
+    const membershipStatus = readString(row.data, 'membershipStatus');
     return {
       id: row.id,
       kind: row.kind,
@@ -169,10 +170,18 @@ function mapNotification(row: NotificationRow, lang: Language): AppNotification 
         : (isHebrew ? 'בקשת הכניסה נדחתה' : 'Lobby access declined'),
       message: lobbyTitle
         ? (approved
-            ? (isHebrew ? `הבקשה שלך ל-${lobbyTitle} אושרה. עכשיו אפשר להיכנס ללובי.` : `Your request for ${lobbyTitle} was approved. You can enter the lobby now.`)
+            ? (
+                membershipStatus === 'waitlisted'
+                  ? (isHebrew ? `הבקשה שלך ל-${lobbyTitle} אושרה, ונוספת לרשימת ההמתנה כי הלובי מלא כרגע.` : `Your request for ${lobbyTitle} was approved, and you were added to the waitlist because the lobby is currently full.`)
+                  : (isHebrew ? `הבקשה שלך ל-${lobbyTitle} אושרה, ונוספת ישירות ללובי.` : `Your request for ${lobbyTitle} was approved, and you were added directly to the lobby.`)
+              )
             : (isHebrew ? `הבקשה שלך ל-${lobbyTitle} נדחתה.` : `Your request for ${lobbyTitle} was declined.`))
         : (approved
-            ? (isHebrew ? 'בקשת הכניסה שלך אושרה.' : 'Your access request was approved.')
+            ? (
+                membershipStatus === 'waitlisted'
+                  ? (isHebrew ? 'בקשת הכניסה שלך אושרה ונוספת לרשימת ההמתנה.' : 'Your access request was approved and you were added to the waitlist.')
+                  : (isHebrew ? 'בקשת הכניסה שלך אושרה ונוספת ללובי.' : 'Your access request was approved and you were added to the lobby.')
+              )
             : (isHebrew ? 'בקשת הכניסה שלך נדחתה.' : 'Your access request was declined.')),
       isRead: row.is_read,
       createdAt: row.created_at,
@@ -479,6 +488,7 @@ export async function createLobbyJoinRequestResolutionNotification(
   recipientId: string,
   lobby: Lobby,
   outcome: 'approved' | 'declined',
+  membershipStatus?: 'joined' | 'waitlisted',
 ) {
   await insertNotifications([
     {
@@ -488,6 +498,7 @@ export async function createLobbyJoinRequestResolutionNotification(
       kind: outcome === 'approved' ? 'lobby_join_request_approved' : 'lobby_join_request_declined',
       data: {
         lobbyTitle: lobby.title,
+        ...(membershipStatus ? { membershipStatus } : {}),
       },
     },
   ]);

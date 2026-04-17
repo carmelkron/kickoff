@@ -353,12 +353,26 @@ using (
     where p.id = profile_id
       and p.auth_user_id = auth.uid()
   )
+  or exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
+      and p.auth_user_id = auth.uid()
+  )
 )
 with check (
   exists (
     select 1
     from public.profiles p
     where p.id = profile_id
+      and p.auth_user_id = auth.uid()
+  )
+  or exists (
+    select 1
+    from public.lobbies l
+    join public.profiles p on p.id = l.created_by
+    where l.id = lobby_id
       and p.auth_user_id = auth.uid()
   )
 );

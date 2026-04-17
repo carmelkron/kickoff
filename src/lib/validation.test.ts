@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Lobby, Player } from '../types';
-import { getJoinLobbyError, validateCreateLobbyDraft, validateRegisterDraft } from './validation';
+import { getJoinLobbyError, getJoinLobbyTargetStatus, validateCreateLobbyDraft, validateRegisterDraft } from './validation';
 
 function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
@@ -191,5 +191,16 @@ describe('getJoinLobbyError', () => {
     const lobby = makeLobby({ minAge: 18 });
 
     expect(getJoinLobbyError(lobby, player)).toBe('This lobby is for players aged 18 and up.');
+  });
+});
+
+describe('getJoinLobbyTargetStatus', () => {
+  it('joins immediately when there is room', () => {
+    expect(getJoinLobbyTargetStatus(makeLobby({ maxPlayers: 10, players: [makePlayer()] }))).toBe('joined');
+  });
+
+  it('waitlists when the lobby is already full', () => {
+    const players = Array.from({ length: 2 }, (_, index) => makePlayer({ id: `p-${index}` }));
+    expect(getJoinLobbyTargetStatus(makeLobby({ maxPlayers: 2, players }))).toBe('waitlisted');
   });
 });

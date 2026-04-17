@@ -46,6 +46,8 @@ export type CreateLobbyPayload = {
   description?: string;
 };
 
+export type LobbyMembershipTargetStatus = 'joined' | 'waitlisted';
+
 export function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, ' ');
 }
@@ -278,4 +280,8 @@ export function getJoinLobbyError(
   }
 
   return null;
+}
+
+export function getJoinLobbyTargetStatus(lobby: Lobby): LobbyMembershipTargetStatus {
+  return lobby.players.length >= lobby.maxPlayers ? 'waitlisted' : 'joined';
 }
