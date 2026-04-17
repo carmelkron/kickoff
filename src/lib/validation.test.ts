@@ -143,6 +143,25 @@ describe('validateCreateLobbyDraft', () => {
     expect(errors).toContain('Price must be between 0 and 999.');
     expect(errors).toContain('Description must be 500 characters or fewer.');
   });
+
+  it('rejects invalid age ranges', () => {
+    const errors = validateCreateLobbyDraft(
+      {
+        title: 'Thursday Night',
+        address: '123 Gordon St',
+        city: 'Tel Aviv',
+        date: '2099-06-01',
+        time: '20:30',
+        numTeams: 2,
+        playersPerTeam: 5,
+        minAge: 30,
+        maxAge: 20,
+      },
+      new Date('2099-05-01T00:00:00.000Z'),
+    );
+
+    expect(errors).toContain('Minimum age cannot be greater than maximum age.');
+  });
 });
 
 describe('getJoinLobbyError', () => {
@@ -158,5 +177,19 @@ describe('getJoinLobbyError', () => {
     const lobby = makeLobby({ waitlist: [player] });
 
     expect(getJoinLobbyError(lobby, player, { allowExistingWaitlist: true })).toBeNull();
+  });
+
+  it('blocks joining an age-restricted lobby without a birth date', () => {
+    const player = makePlayer();
+    const lobby = makeLobby({ minAge: 18, maxAge: 35 });
+
+    expect(getJoinLobbyError(lobby, player)).toBe('Add your birth date in your profile to join this age-restricted lobby.');
+  });
+
+  it('blocks players outside the age range on game day', () => {
+    const player = makePlayer({ birthdate: '2085-06-02' });
+    const lobby = makeLobby({ minAge: 18 });
+
+    expect(getJoinLobbyError(lobby, player)).toBe('This lobby is for players aged 18 and up.');
   });
 });

@@ -24,6 +24,7 @@ type ProfileRow = {
   bio: string | null;
   photo_url: string | null;
   gender: Gender | null;
+  birthdate: string | null;
   rating_history: RatingEntry[];
   lobby_history: LobbyHistoryEntry[];
   home_latitude: number | null;
@@ -46,6 +47,7 @@ type RegisterInput = {
   position: string;
   bio?: string;
   gender?: Gender;
+  birthdate?: string;
   photoFile?: File;
   homeLatitude?: number;
   homeLongitude?: number;
@@ -81,6 +83,7 @@ function mapProfileToAuthUser(profile: ProfileRow, overrides?: Partial<AuthUser>
     bio: profile.bio ?? undefined,
     photoUrl: profile.photo_url ?? undefined,
     gender: profile.gender ?? undefined,
+    birthdate: profile.birthdate ?? undefined,
     ratingHistory: profile.rating_history ?? [],
     lobbyHistory: profile.lobby_history ?? [],
     friends: [],
@@ -122,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       position?: string;
       bio?: string;
       gender?: Gender;
+      birthdate?: string;
       photoUrl?: string | null;
       homeLatitude?: number;
       homeLongitude?: number;
@@ -170,6 +174,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const gender =
       overrides?.gender ??
       (typeof metadata.gender === 'string' ? metadata.gender as Gender : undefined);
+    const birthdate =
+      overrides?.birthdate ??
+      (typeof metadata.birthdate === 'string' ? metadata.birthdate : undefined);
 
     const { error: insertProfileError } = await supabase.from('profiles').insert({
       id: authUser.id,
@@ -183,6 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       position: position ? normalizeText(position) : null,
       bio: bio ? normalizeText(bio) : null,
       gender: gender ?? null,
+      birthdate: birthdate ?? null,
       photo_url: photoUrl,
       rating_history: [],
       lobby_history: [],
@@ -202,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function refresh(authUserId: string | null) {
     const { data: profilesData, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history, home_latitude, home_longitude, home_address')
+      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, birthdate, rating_history, lobby_history, home_latitude, home_longitude, home_address')
       .order('name', { ascending: true });
 
     if (profilesError) {
@@ -319,6 +327,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       position: data.position,
       bio: data.bio,
       photoFile: data.photoFile ?? null,
+      birthdate: data.birthdate,
     });
 
     if (validationErrors.length > 0) {
@@ -336,6 +345,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           position: data.position ? normalizeText(data.position) : null,
           bio: data.bio ? normalizeText(data.bio) : null,
           gender: data.gender ?? null,
+          birthdate: data.birthdate ?? null,
         },
       },
     });
@@ -372,6 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           position: data.position,
           bio: data.bio,
           gender: data.gender,
+          birthdate: data.birthdate,
           photoUrl: recoveredPhotoUrl,
         });
 
@@ -405,6 +416,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         position: data.position,
         bio: data.bio,
         gender: data.gender,
+        birthdate: data.birthdate,
         photoUrl,
         homeLatitude: data.homeLatitude,
         homeLongitude: data.homeLongitude,

@@ -1,4 +1,5 @@
 import type { Lobby, Player } from '../types';
+import { calculateAgeOnDate, validateBirthdate } from '../utils/age';
 
 export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 export const ALLOWED_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -10,6 +11,7 @@ export type RegisterDraft = {
   confirm?: string;
   position?: string;
   bio?: string;
+  birthdate?: string;
   photoFile?: File | null;
 };
 
@@ -23,6 +25,8 @@ export type CreateLobbyDraft = {
   playersPerTeam: number;
   accessType?: 'open' | 'locked';
   minRating?: number;
+  minAge?: number;
+  maxAge?: number;
   price?: number;
   description?: string;
 };
@@ -36,6 +40,8 @@ export type CreateLobbyPayload = {
   playersPerTeam: number;
   accessType?: 'open' | 'locked';
   minRating?: number;
+  minAge?: number;
+  maxAge?: number;
   price?: number;
   description?: string;
 };
@@ -76,6 +82,13 @@ export function validateRegisterDraft(input: RegisterDraft) {
 
   if (bio.length > 280) {
     errors.push('Bio must be 280 characters or fewer.');
+  }
+
+  if (input.birthdate) {
+    const birthdateError = validateBirthdate(input.birthdate);
+    if (birthdateError) {
+      errors.push(birthdateError);
+    }
   }
 
   if (input.photoFile) {
@@ -135,6 +148,22 @@ export function validateCreateLobbyDraft(input: CreateLobbyDraft, now = new Date
     errors.push('Total max players must be between 6 and 44.');
   }
 
+  if (typeof input.minAge === 'number' && (!Number.isInteger(input.minAge) || input.minAge < 6 || input.minAge > 99)) {
+    errors.push('Minimum age must be between 6 and 99.');
+  }
+
+  if (typeof input.maxAge === 'number' && (!Number.isInteger(input.maxAge) || input.maxAge < 6 || input.maxAge > 99)) {
+    errors.push('Maximum age must be between 6 and 99.');
+  }
+
+  if (
+    typeof input.minAge === 'number'
+    && typeof input.maxAge === 'number'
+    && input.minAge > input.maxAge
+  ) {
+    errors.push('Minimum age cannot be greater than maximum age.');
+  }
+
   if (typeof input.price === 'number' && (!Number.isFinite(input.price) || input.price < 0 || input.price > 999)) {
     errors.push('Price must be between 0 and 999.');
   }
@@ -185,6 +214,22 @@ export function validateCreateLobbyPayload(input: CreateLobbyPayload, now = new 
     errors.push('Total max players must be between 6 and 44.');
   }
 
+  if (typeof input.minAge === 'number' && (!Number.isInteger(input.minAge) || input.minAge < 6 || input.minAge > 99)) {
+    errors.push('Minimum age must be between 6 and 99.');
+  }
+
+  if (typeof input.maxAge === 'number' && (!Number.isInteger(input.maxAge) || input.maxAge < 6 || input.maxAge > 99)) {
+    errors.push('Maximum age must be between 6 and 99.');
+  }
+
+  if (
+    typeof input.minAge === 'number'
+    && typeof input.maxAge === 'number'
+    && input.minAge > input.maxAge
+  ) {
+    errors.push('Minimum age cannot be greater than maximum age.');
+  }
+
   if (typeof input.price === 'number' && (!Number.isFinite(input.price) || input.price < 0 || input.price > 999)) {
     errors.push('Price must be between 0 and 999.');
   }
@@ -211,6 +256,25 @@ export function getJoinLobbyError(
 
   if (!options?.allowExistingWaitlist && lobby.waitlist.some((member) => member.id === player.id)) {
     return 'You are already on the waitlist.';
+  }
+
+  if (lobby.minAge != null || lobby.maxAge != null) {
+    if (!player.birthdate) {
+      return 'Add your birth date in your profile to join this age-restricted lobby.';
+    }
+
+    const age = calculateAgeOnDate(player.birthdate, lobby.datetime);
+    if (age == null) {
+      return 'Add a valid birth date in your profile to join this age-restricted lobby.';
+    }
+
+    if (lobby.minAge != null && age < lobby.minAge) {
+      return `This lobby is for players aged ${lobby.minAge} and up.`;
+    }
+
+    if (lobby.maxAge != null && age > lobby.maxAge) {
+      return `This lobby is for players up to age ${lobby.maxAge}.`;
+    }
   }
 
   return null;

@@ -3,6 +3,7 @@ import { MapPin, Clock, Users, Lock, Handshake, Trophy } from 'lucide-react';
 import { Lobby } from '../types';
 import { useLang } from '../contexts/LanguageContext';
 import { formatDateTime } from '../utils/format';
+import { formatAgeRange } from '../utils/age';
 import { formatLocationLabel } from '../utils/location';
 import PlayerAvatarStack from './PlayerAvatarStack';
 
@@ -27,6 +28,7 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
   const dateStr = formatDateTime(lobby.datetime, lang, t.common.today, t.common.tomorrow);
   const avg = avgCompetitivePoints(lobby);
   const shownDistanceLabel = distanceLabel ?? `${lobby.distanceKm} ${t.common.km}`;
+  const ageRangeLabel = formatAgeRange(lobby.minAge, lobby.maxAge, lang);
 
   return (
     <div
@@ -66,6 +68,11 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
             {lobby.accessType === 'locked' && !lobby.viewerHasAccess && (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">
                 {lang === 'he' ? 'דורש אישור' : 'Approval required'}
+              </span>
+            )}
+            {ageRangeLabel && (
+              <span className="inline-flex items-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                {ageRangeLabel}
               </span>
             )}
           </div>

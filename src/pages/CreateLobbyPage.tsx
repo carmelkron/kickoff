@@ -25,6 +25,8 @@ export default function CreateLobbyPage() {
     time: '',
     numTeams: 2,
     playersPerTeam: 5,
+    minAge: '',
+    maxAge: '',
     price: '',
     description: '',
   });
@@ -39,7 +41,7 @@ export default function CreateLobbyPage() {
   const currentUserId = currentUser.id;
   const maxPlayers = form.numTeams * form.playersPerTeam;
 
-  function setField(key: 'title' | 'date' | 'time' | 'price' | 'description') {
+  function setField(key: 'title' | 'date' | 'time' | 'minAge' | 'maxAge' | 'price' | 'description') {
     return (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setForm((prev) => ({ ...prev, [key]: event.target.value }));
     };
@@ -51,6 +53,8 @@ export default function CreateLobbyPage() {
     setError('');
 
     const numericPrice = form.price ? Number(form.price) : undefined;
+    const minAge = form.minAge ? Number(form.minAge) : undefined;
+    const maxAge = form.maxAge ? Number(form.maxAge) : undefined;
     const address = selectedPlace?.address ?? '';
     const city = selectedPlace?.city ?? '';
     const validationErrors = validateCreateLobbyDraft({
@@ -62,6 +66,8 @@ export default function CreateLobbyPage() {
       numTeams: form.numTeams,
       playersPerTeam: form.playersPerTeam,
       accessType,
+      minAge,
+      maxAge,
       price: numericPrice,
       description: form.description,
     });
@@ -88,6 +94,8 @@ export default function CreateLobbyPage() {
         maxPlayers,
         numTeams: form.numTeams,
         playersPerTeam: form.playersPerTeam,
+        minAge,
+        maxAge,
         price: numericPrice,
         description: form.description || undefined,
         createdBy: currentUserId,
@@ -317,6 +325,34 @@ export default function CreateLobbyPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {lang === 'he' ? 'טווח גילאים (אופציונלי)' : 'Age range (optional)'}
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                type="number"
+                min="6"
+                max="99"
+                value={form.minAge}
+                onChange={setField('minAge')}
+                placeholder={lang === 'he' ? 'מגיל' : 'Min age'}
+              />
+              <Input
+                type="number"
+                min="6"
+                max="99"
+                value={form.maxAge}
+                onChange={setField('maxAge')}
+                placeholder={lang === 'he' ? 'עד גיל' : 'Max age'}
+              />
+            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              {lang === 'he'
+                ? 'רק שחקנים שתאריך הלידה שלהם מתאים לטווח יוכלו להצטרף.'
+                : 'Only players whose birth date matches this range will be able to join.'}
+            </p>
           </div>
         </Card>
 

@@ -37,6 +37,7 @@ export default function RegisterPage() {
     bio: '',
     avatarColor: 'bg-blue-500',
     gender: '' as Gender | '',
+    birthdate: '',
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
@@ -98,6 +99,7 @@ export default function RegisterPage() {
       confirm: form.confirm,
       position: form.position,
       bio: form.bio,
+      birthdate: form.birthdate,
       photoFile,
     });
 
@@ -116,6 +118,7 @@ export default function RegisterPage() {
       position: form.position,
       bio: form.bio || undefined,
       gender: form.gender || undefined,
+      birthdate: form.birthdate || undefined,
       photoFile: photoFile ?? undefined,
       homeLatitude: homePlace?.latitude,
       homeLongitude: homePlace?.longitude,
@@ -258,6 +261,14 @@ export default function RegisterPage() {
                 </option>
               ))}
             </select>
+          </Field>
+          <Field label={lang === 'he' ? 'תאריך לידה (אופציונלי)' : 'Birth date (optional)'}>
+            <Input type="date" value={form.birthdate} onChange={setField('birthdate')} max="2099-12-31" />
+            <p className="mt-1.5 text-xs text-gray-400">
+              {lang === 'he'
+                ? 'נשתמש בזה רק כדי לבדוק התאמה ללוביים עם הגבלת גיל.'
+                : 'Used only to check age-restricted lobbies.'}
+            </p>
           </Field>
           <Field label={lang === 'he' ? 'ביו קצר (אופציונלי)' : 'Short bio (optional)'}>
             <textarea

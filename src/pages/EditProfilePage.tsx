@@ -6,6 +6,7 @@ import { useLang } from '../contexts/LanguageContext';
 import { updateProfile, updateHomeLocation } from '../lib/appData';
 import { uploadAvatar } from '../lib/storage';
 import type { Gender } from '../types';
+import { validateBirthdate } from '../utils/age';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
 import { formatLocationLabel } from '../utils/location';
@@ -24,6 +25,7 @@ export default function EditProfilePage() {
     position: '',
     bio: '',
     gender: '' as Gender | '',
+    birthdate: '',
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
@@ -38,6 +40,7 @@ export default function EditProfilePage() {
         position: currentUser.position ?? '',
         bio: currentUser.bio ?? '',
         gender: currentUser.gender ?? '',
+        birthdate: currentUser.birthdate ?? '',
       });
       // Pre-fill home address if already set
       if (currentUser.homeAddress) {
@@ -86,6 +89,11 @@ export default function EditProfilePage() {
       setError(lang === 'he' ? 'בחר עמדה מועדפת' : 'Choose a preferred position');
       return;
     }
+    const birthdateError = validateBirthdate(form.birthdate);
+    if (birthdateError) {
+      setError(birthdateError);
+      return;
+    }
     setSubmitting(true);
     setError('');
 
@@ -103,6 +111,7 @@ export default function EditProfilePage() {
         position: form.position,
         bio: form.bio || undefined,
         gender: form.gender || undefined,
+        birthdate: form.birthdate || null,
         photoUrl,
       });
 
@@ -185,6 +194,14 @@ export default function EditProfilePage() {
               <option value="">{lang === 'he' ? 'בחר עמדה' : 'Select position'}</option>
               {positions.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
+          </Field>
+          <Field label={lang === 'he' ? 'תאריך לידה (אופציונלי)' : 'Birth date (optional)'}>
+            <Input type="date" value={form.birthdate} onChange={setField('birthdate')} max="2099-12-31" />
+            <p className="mt-1.5 text-xs text-gray-400">
+              {lang === 'he'
+                ? 'השדה הזה פרטי ומשמש רק לבדיקת התאמה ללוביים עם הגבלת גיל.'
+                : 'This stays private and is used only for age-restricted lobbies.'}
+            </p>
           </Field>
           <Field label={lang === 'he' ? 'ביו (אופציונלי)' : 'Bio (optional)'}>
             <textarea rows={3} value={form.bio} onChange={setField('bio')}

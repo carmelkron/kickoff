@@ -18,7 +18,8 @@ import { calculateCompetitiveStandings } from './competitiveResults';
 import { buildBalancedLobbyTeams } from './teamAssignment';
 import { buildWaitlistSyncPlan } from './waitlist';
 
-const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, gender_restriction, latitude, longitude';
+const PROFILE_SELECT_FIELDS = 'id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, birthdate, rating_history, lobby_history';
+const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, min_age, max_age, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, gender_restriction, latitude, longitude';
 const LOBBY_SELECT_FIELDS_WITH_STATUS = `${LOBBY_SELECT_FIELDS}, status`;
 
 function toAppError(error: unknown, fallbackMessage: string) {
@@ -90,6 +91,7 @@ type ProfileRow = {
   bio: string | null;
   photo_url: string | null;
   gender: Gender | null;
+  birthdate: string | null;
   rating_history: RatingEntry[];
   lobby_history: LobbyHistoryEntry[];
 };
@@ -104,6 +106,8 @@ type LobbyRow = {
   num_teams: number | null;
   players_per_team: number | null;
   min_rating: number | null;
+  min_age: number | null;
+  max_age: number | null;
   is_private: boolean;
   price: number | null;
   description: string | null;
@@ -350,6 +354,7 @@ function mapProfile(row: ProfileRow): Player {
     email: row.email ?? undefined,
     photoUrl: row.photo_url ?? undefined,
     gender: row.gender ?? undefined,
+    birthdate: row.birthdate ?? undefined,
     competitivePoints: row.competitive_points ?? 0,
     ratingHistory: row.rating_history ?? [],
     lobbyHistory: row.lobby_history ?? [],
@@ -360,7 +365,7 @@ export async function fetchProfiles(): Promise<Player[]> {
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history')
+    .select(PROFILE_SELECT_FIELDS)
     .order('name', { ascending: true });
 
   if (error) {
@@ -374,7 +379,7 @@ export async function fetchProfileById(id: string): Promise<Player | null> {
   const supabase = requireSupabase();
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history')
+    .select(PROFILE_SELECT_FIELDS)
     .eq('id', id)
     .maybeSingle();
 
@@ -391,6 +396,7 @@ export type UpdateProfileInput = {
   position?: string;
   bio?: string;
   gender?: Gender;
+  birthdate?: string | null;
   photoUrl?: string | null;
 };
 
@@ -409,6 +415,7 @@ export async function updateProfile(input: UpdateProfileInput) {
       position: input.position ?? null,
       bio: input.bio ?? null,
       gender: input.gender ?? null,
+      birthdate: input.birthdate ?? null,
       ...(input.photoUrl !== undefined ? { photo_url: input.photoUrl } : {}),
     })
     .eq('id', input.profileId);
@@ -442,7 +449,7 @@ export async function fetchLobbies(): Promise<Lobby[]> {
     fetchLobbyRows().then((data) => ({ data, error: null })),
     supabase
       .from('profiles')
-      .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history'),
+      .select(PROFILE_SELECT_FIELDS),
     supabase
       .from('lobby_memberships')
       .select('lobby_id, profile_id, status, created_at'),
@@ -532,6 +539,8 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       numTeams: row.num_teams ?? undefined,
       playersPerTeam: row.players_per_team ?? undefined,
       minRating: row.min_rating ?? undefined,
+      minAge: row.min_age ?? undefined,
+      maxAge: row.max_age ?? undefined,
       isPrivate: row.is_private,
       price: row.price ?? undefined,
       description: row.description ?? undefined,
@@ -581,7 +590,7 @@ export async function fetchLobbyInvites(lobbyId: string): Promise<LobbyInvite[]>
   const profileIds = [...new Set(invites.map((invite) => invite.invited_profile_id))];
   const { data: profileRows, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history')
+    .select(PROFILE_SELECT_FIELDS)
     .in('id', profileIds);
 
   if (profilesError) {
@@ -633,7 +642,7 @@ export async function fetchLobbyJoinRequests(lobbyId: string): Promise<LobbyJoin
   const profileIds = [...new Set(requests.map((request) => request.requester_profile_id))];
   const { data: profileRows, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history')
+    .select(PROFILE_SELECT_FIELDS)
     .in('id', profileIds);
 
   if (profilesError) {
@@ -714,7 +723,7 @@ export async function fetchLobbyTeams(lobbyId: string): Promise<LobbyTeamAssignm
 
   const { data: profileRows, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, rating_history, lobby_history')
+    .select(PROFILE_SELECT_FIELDS)
     .in('id', profileIds);
 
   if (profilesError) {
@@ -1229,6 +1238,8 @@ export type CreateLobbyInput = {
   numTeams?: number;
   playersPerTeam?: number;
   minRating?: number;
+  minAge?: number;
+  maxAge?: number;
   price?: number;
   description?: string;
   createdBy: string;
@@ -1250,6 +1261,8 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     playersPerTeam: input.playersPerTeam ?? 0,
     accessType: input.accessType,
     minRating: input.gameType === 'competitive' ? input.minRating : undefined,
+    minAge: input.minAge,
+    maxAge: input.maxAge,
     price: input.price,
     description: input.description,
   });
@@ -1271,6 +1284,8 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     num_teams: input.numTeams ?? null,
     players_per_team: input.playersPerTeam ?? null,
     min_rating: input.gameType === 'competitive' ? (input.minRating ?? null) : null,
+    min_age: input.minAge ?? null,
+    max_age: input.maxAge ?? null,
     is_private: false,
     price: input.price ?? null,
     description: input.description ? normalizeText(input.description) : null,
@@ -1298,6 +1313,8 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
       num_teams: lobbyPayload.num_teams,
       players_per_team: lobbyPayload.players_per_team,
       min_rating: lobbyPayload.min_rating,
+      min_age: lobbyPayload.min_age,
+      max_age: lobbyPayload.max_age,
       is_private: lobbyPayload.is_private,
       price: lobbyPayload.price,
       description: lobbyPayload.description,
@@ -1704,6 +1721,8 @@ export type UpdateLobbyInput = {
   numTeams?: number;
   playersPerTeam?: number;
   minRating?: number;
+  minAge?: number;
+  maxAge?: number;
   price?: number;
   description?: string;
   gameType: GameType;
@@ -1727,6 +1746,8 @@ export async function updateLobby(input: UpdateLobbyInput) {
       players_per_team: input.playersPerTeam ?? null,
       max_players: (input.numTeams ?? 2) * (input.playersPerTeam ?? 5),
       min_rating: input.gameType === 'competitive' ? (input.minRating ?? null) : null,
+      min_age: input.minAge ?? null,
+      max_age: input.maxAge ?? null,
       price: input.price ?? null,
       description: input.description ? normalizeText(input.description) : null,
       game_type: input.gameType,

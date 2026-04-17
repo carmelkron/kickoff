@@ -41,6 +41,7 @@ export interface Player {
   email?: string;
   photoUrl?: string;
   gender?: Gender;
+  birthdate?: string;
   ratingHistory: RatingEntry[];
   lobbyHistory: LobbyHistoryEntry[];
 }
@@ -57,6 +58,8 @@ export interface Lobby {
   numTeams?: number;
   playersPerTeam?: number;
   minRating?: number;
+  minAge?: number;
+  maxAge?: number;
   isPrivate: boolean;
   price?: number;
   description?: string;
@@ -173,6 +176,7 @@ export interface AuthUser {
   bio?: string;
   photoUrl?: string;
   gender?: Gender;
+  birthdate?: string;
   ratingHistory: RatingEntry[];
   lobbyHistory: LobbyHistoryEntry[];
   competitivePoints?: number;

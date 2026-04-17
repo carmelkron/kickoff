@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, Lock, MapPin, Pencil, ShieldCheck, Trash2, Trophy, Users } from 'lucide-react';
+import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, LoaderCircle, Lock, MapPin, Pencil, ShieldCheck, Trash2, Trophy, Users } from 'lucide-react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
@@ -7,6 +7,7 @@ import { approveLobbyJoinRequest, createLobbyInvite, declineLobbyJoinRequest, de
 import { getJoinLobbyError } from '../lib/validation';
 import type { ContributionType, Lobby, LobbyInvite, LobbyJoinRequest, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
 import { formatDateTime } from '../utils/format';
+import { formatAgeRange } from '../utils/age';
 import { getDistanceSourceText, loadSessionDistancePreference } from '../utils/distanceSource';
 import { haversineKm } from '../utils/geo';
 import { formatLocationLabel } from '../utils/location';
@@ -63,6 +64,7 @@ export default function LobbyDetailLive() {
   const [generatingTeams, setGeneratingTeams] = useState(false);
   const [selectedSwapPlayer, setSelectedSwapPlayer] = useState<{ profileId: string; teamId: string } | null>(null);
   const [swappingTeams, setSwappingTeams] = useState(false);
+  const [swappingPairLabel, setSwappingPairLabel] = useState<{ fromName: string; toName: string } | null>(null);
   const [lobbyResult, setLobbyResult] = useState<LobbyResultSummary | null>(null);
   const [showResultModal, setShowResultModal] = useState(false);
   const [resultWins, setResultWins] = useState<Record<string, number>>({});
@@ -238,6 +240,7 @@ export default function LobbyDetailLive() {
           .filter((user) => !resolvedLobby.waitlist.some((player) => player.id === user.id))
           .filter((user) => !inviteCandidateIds.has(user.id))
       : [];
+  const ageRangeLabel = formatAgeRange(resolvedLobby.minAge, resolvedLobby.maxAge, lang);
 
   const myStatus: MyStatus = (() => {
     if (!currentUser) {
@@ -428,7 +431,16 @@ export default function LobbyDetailLive() {
       return;
     }
 
+    const allTeamPlayers = teams.flatMap((assignment) => assignment.players);
+    const sourcePlayer = allTeamPlayers.find((player) => player.id === selectedSwapPlayer.profileId);
+    const targetPlayer = allTeamPlayers.find((player) => player.id === targetProfileId);
+
     setSwappingTeams(true);
+    setSwappingPairLabel(
+      sourcePlayer && targetPlayer
+        ? { fromName: sourcePlayer.name, toName: targetPlayer.name }
+        : null,
+    );
     setError('');
     try {
       const nextTeams = await swapLobbyTeamPlayers(
@@ -443,6 +455,7 @@ export default function LobbyDetailLive() {
       setError(nextError instanceof Error ? nextError.message : 'Failed to swap players');
     } finally {
       setSwappingTeams(false);
+      setSwappingPairLabel(null);
     }
   }
 
@@ -852,6 +865,11 @@ export default function LobbyDetailLive() {
               {' '}{lobby.fieldType === 'grass' ? (lang === 'he' ? 'דשא' : 'Grass') : lobby.fieldType === 'asphalt' ? (lang === 'he' ? 'אספלט' : 'Asphalt') : (lang === 'he' ? 'אולם' : 'Indoor')}
             </span>
           )}
+          {ageRangeLabel && (
+            <span className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">
+              {ageRangeLabel}
+            </span>
+          )}
           {lobby.genderRestriction !== 'none' && (
             <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
               {lobby.genderRestriction === 'male' ? '👨 ' : '👩 '}
@@ -869,7 +887,7 @@ export default function LobbyDetailLive() {
       </div>
 
       {teams.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4" aria-busy={swappingTeams}>
           <h2 className="font-semibold text-gray-900 mb-4">
             {lang === 'he' ? 'הקבוצות שנקבעו' : 'Assigned teams'}
           </h2>
@@ -893,6 +911,29 @@ export default function LobbyDetailLive() {
                   {lang === 'he' ? 'בטל בחירה' : 'Cancel selection'}
                 </button>
               )}
+            </div>
+          )}
+          {swappingTeams && (
+            <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-800">
+              <LoaderCircle size={18} className="shrink-0 animate-spin" />
+              <div>
+                <p className="font-semibold">
+                  {lang === 'he' ? 'מחליף שחקנים בין הקבוצות...' : 'Swapping players between teams...'}
+                </p>
+                <p className="text-xs text-primary-700">
+                  {swappingPairLabel
+                    ? (
+                      lang === 'he'
+                        ? `${swappingPairLabel.fromName} ו-${swappingPairLabel.toName} מתעדכנים עכשיו.`
+                        : `${swappingPairLabel.fromName} and ${swappingPairLabel.toName} are being updated now.`
+                    )
+                    : (
+                      lang === 'he'
+                        ? 'עוד רגע ההרכבים יתעדכנו כאן.'
+                        : 'The lineups will refresh here in a moment.'
+                    )}
+                </p>
+              </div>
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -944,6 +985,8 @@ export default function LobbyDetailLive() {
                         selectedSwapPlayer?.profileId === player.id && selectedSwapPlayer.teamId === assignment.team.id
                           ? 'ring-2 ring-primary-300 bg-primary-50'
                           : ''
+                      } ${
+                        swappingTeams ? 'opacity-60' : ''
                       }`}
                     >
                       {player.photoUrl ? (

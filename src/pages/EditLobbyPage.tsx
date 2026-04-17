@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useLang } from '../contexts/LanguageContext';
 import { fetchLobbyById, updateLobby } from '../lib/appData';
-import { buildLobbyDateTime } from '../lib/validation';
+import { buildLobbyDateTime, validateCreateLobbyDraft } from '../lib/validation';
 import type { FieldType, GameType, GenderRestriction, Lobby, LobbyAccessType } from '../types';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
@@ -32,6 +32,8 @@ export default function EditLobbyPage() {
     time: '',
     numTeams: 2,
     playersPerTeam: 5,
+    minAge: '',
+    maxAge: '',
     price: '',
     description: '',
   });
@@ -49,6 +51,8 @@ export default function EditLobbyPage() {
           time: `${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
           numTeams: nextLobby.numTeams ?? 2,
           playersPerTeam: nextLobby.playersPerTeam ?? 5,
+          minAge: nextLobby.minAge != null ? String(nextLobby.minAge) : '',
+          maxAge: nextLobby.maxAge != null ? String(nextLobby.maxAge) : '',
           price: nextLobby.price ? String(nextLobby.price) : '',
           description: nextLobby.description ?? '',
         });
@@ -91,6 +95,8 @@ export default function EditLobbyPage() {
     setError('');
 
     const datetime = buildLobbyDateTime(form.date, form.time);
+    const minAge = form.minAge ? Number(form.minAge) : undefined;
+    const maxAge = form.maxAge ? Number(form.maxAge) : undefined;
     if (!datetime) {
       setError(lang === 'he' ? 'בחר תאריך ושעה תקינים' : 'Choose a valid date and time.');
       setSubmitting(false);
@@ -99,6 +105,26 @@ export default function EditLobbyPage() {
 
     if (!selectedPlace) {
       setError(lang === 'he' ? 'יש לבחור מיקום מהרשימה' : 'Please select a location from the list');
+      setSubmitting(false);
+      return;
+    }
+
+    const validationErrors = validateCreateLobbyDraft({
+      title: form.title,
+      address: selectedPlace.address,
+      city: selectedPlace.city,
+      date: form.date,
+      time: form.time,
+      numTeams: form.numTeams,
+      playersPerTeam: form.playersPerTeam,
+      accessType,
+      minAge,
+      maxAge,
+      price: form.price ? Number(form.price) : undefined,
+      description: form.description,
+    });
+    if (validationErrors.length > 0) {
+      setError(validationErrors[0]);
       setSubmitting(false);
       return;
     }
@@ -112,6 +138,8 @@ export default function EditLobbyPage() {
         datetime: datetime.toISOString(),
         numTeams: form.numTeams,
         playersPerTeam: form.playersPerTeam,
+        minAge,
+        maxAge,
         price: form.price ? Number(form.price) : undefined,
         description: form.description || undefined,
         gameType,
@@ -268,6 +296,32 @@ export default function EditLobbyPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{lang === 'he' ? 'טווח גילאים (אופציונלי)' : 'Age range (optional)'}</label>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                type="number"
+                min="6"
+                max="99"
+                value={form.minAge}
+                onChange={setField('minAge')}
+                placeholder={lang === 'he' ? 'מגיל' : 'Min age'}
+              />
+              <Input
+                type="number"
+                min="6"
+                max="99"
+                value={form.maxAge}
+                onChange={setField('maxAge')}
+                placeholder={lang === 'he' ? 'עד גיל' : 'Max age'}
+              />
+            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              {lang === 'he'
+                ? 'רק שחקנים שהגיל שלהם מתאים בתאריך המשחק יוכלו להצטרף.'
+                : 'Only players whose age matches on game day will be able to join.'}
+            </p>
           </div>
         </Card>
 
