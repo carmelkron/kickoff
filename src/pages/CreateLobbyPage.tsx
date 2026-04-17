@@ -30,6 +30,10 @@ export default function CreateLobbyPage() {
     price: '',
     description: '',
   });
+  const [manualLocation, setManualLocation] = useState({
+    address: '',
+    city: '',
+  });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
@@ -55,8 +59,8 @@ export default function CreateLobbyPage() {
     const numericPrice = form.price ? Number(form.price) : undefined;
     const minAge = form.minAge ? Number(form.minAge) : undefined;
     const maxAge = form.maxAge ? Number(form.maxAge) : undefined;
-    const address = selectedPlace?.address ?? '';
-    const city = selectedPlace?.city ?? '';
+    const address = (selectedPlace?.address ?? manualLocation.address).trim();
+    const city = (selectedPlace?.city ?? manualLocation.city).trim();
     const validationErrors = validateCreateLobbyDraft({
       title: form.title,
       address,
@@ -72,8 +76,8 @@ export default function CreateLobbyPage() {
       description: form.description,
     });
 
-    if (!selectedPlace) {
-      setError(lang === 'he' ? 'יש לבחור מיקום מהרשימה' : 'Please select a location from the list');
+    if (!address || !city) {
+      setError(lang === 'he' ? 'יש לבחור מיקום מהרשימה או למלא כתובת ועיר ידנית.' : 'Please select a location from the list or fill in the address and city manually.');
       setSubmitting(false);
       return;
     }
@@ -211,7 +215,13 @@ export default function CreateLobbyPage() {
           <Field label={lang === 'he' ? 'מיקום המגרש' : 'Field location'}>
             <GooglePlacesAutocomplete
               value={selectedPlace ? formatLocationLabel(selectedPlace.address, selectedPlace.city) : ''}
-              onSelect={(place) => setSelectedPlace(place)}
+              onSelect={(place) => {
+                setSelectedPlace(place);
+                setManualLocation({
+                  address: place.address,
+                  city: place.city,
+                });
+              }}
               onClear={() => setSelectedPlace(null)}
               placeholder={lang === 'he' ? 'חפש כתובת או עיר...' : 'Search address or city...'}
               required
@@ -222,6 +232,23 @@ export default function CreateLobbyPage() {
                 ✓ {selectedPlace.city && `${selectedPlace.city} · `}{selectedPlace.latitude.toFixed(4)}, {selectedPlace.longitude.toFixed(4)}
               </p>
             )}
+            <div className="mt-3 grid grid-cols-1 gap-3 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-3 sm:grid-cols-2">
+              <Input
+                value={manualLocation.address}
+                onChange={(event) => setManualLocation((prev) => ({ ...prev, address: event.target.value }))}
+                placeholder={lang === 'he' ? 'גיבוי ידני: כתובת' : 'Manual fallback: address'}
+              />
+              <Input
+                value={manualLocation.city}
+                onChange={(event) => setManualLocation((prev) => ({ ...prev, city: event.target.value }))}
+                placeholder={lang === 'he' ? 'גיבוי ידני: עיר' : 'Manual fallback: city'}
+              />
+            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              {lang === 'he'
+                ? 'אם החיפוש לא מוצא את המיקום או שמפות לא נטענות, אפשר עדיין לפרסם לובי עם כתובת ועיר ידנית.'
+                : 'If search does not find the location or Maps fails to load, you can still publish with a manual address and city.'}
+            </p>
           </Field>
         </Card>
 

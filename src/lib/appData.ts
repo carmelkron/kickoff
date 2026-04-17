@@ -1622,9 +1622,13 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     throw toAppError(membershipError, 'Failed to join the game after creating it.');
   }
 
-  const createdLobby = await fetchLobbyById(id);
-  if (createdLobby) {
-    await createOrganizerSummaryNotification(input.createdBy, createdLobby);
+  try {
+    const createdLobby = await fetchLobbyById(id);
+    if (createdLobby) {
+      await createOrganizerSummaryNotification(input.createdBy, createdLobby);
+    }
+  } catch {
+    // A lobby that was already inserted should still be considered published.
   }
 
   return id;
