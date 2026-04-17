@@ -169,25 +169,10 @@ export default function ProfileLive() {
     }
   }
 
-  if (!profile && allUsers.length === 0) {
-    return <div className="max-w-2xl mx-auto px-4 py-20 text-center text-gray-500">{lang === 'he' ? 'טוען פרופיל...' : 'Loading profile...'}</div>;
-  }
-
-  if (!profile) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <p className="text-gray-500">{lang === 'he' ? 'משתמש לא נמצא' : 'User not found'}</p>
-        <button onClick={() => navigate(-1)} className="mt-4 text-primary-600 underline">
-          {lang === 'he' ? 'חזרה' : 'Back'}
-        </button>
-      </div>
-    );
-  }
-
   const competitivePointsTotal =
     competitiveHistory.length > 0
       ? competitiveHistory.reduce((sum, entry) => sum + entry.points, 0)
-      : profile.competitivePoints ?? 0;
+      : profile?.competitivePoints ?? 0;
   const hasCompetitiveHistory = loadingCompetitiveHistory || competitiveHistory.length > 0 || competitivePointsTotal > 0;
   const hasLobbyHistory = loadingLobbyHistory || lobbyHistory.length > 0;
   const latestCompetitiveGain = competitiveHistory[0]?.points ?? null;
@@ -210,6 +195,21 @@ export default function ProfileLive() {
       setHistoryView(historyTabs[0].id);
     }
   }, [historyTabs, historyView]);
+
+  if (!profile && allUsers.length === 0) {
+    return <div className="max-w-2xl mx-auto px-4 py-20 text-center text-gray-500">{lang === 'he' ? 'טוען פרופיל...' : 'Loading profile...'}</div>;
+  }
+
+  if (!profile) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-20 text-center">
+        <p className="text-gray-500">{lang === 'he' ? 'משתמש לא נמצא' : 'User not found'}</p>
+        <button onClick={() => navigate(-1)} className="mt-4 text-primary-600 underline">
+          {lang === 'he' ? 'חזרה' : 'Back'}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
