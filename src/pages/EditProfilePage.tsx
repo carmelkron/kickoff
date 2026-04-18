@@ -6,6 +6,7 @@ import { useLang } from '../contexts/LanguageContext';
 import { updateProfile, updateHomeLocation } from '../lib/appData';
 import { uploadAvatar } from '../lib/storage';
 import type { Gender } from '../types';
+import { MAX_PROFILE_SKILLS, sanitizeProfileSkills, validateProfileSkills } from '../lib/validation';
 import { validateBirthdate } from '../utils/age';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
@@ -29,6 +30,8 @@ export default function EditProfilePage() {
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
+  const [skills, setSkills] = useState<string[]>([]);
+  const [skillInput, setSkillInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [homePlace, setHomePlace] = useState<PlaceResult | null>(null);
@@ -42,6 +45,8 @@ export default function EditProfilePage() {
         gender: currentUser.gender ?? '',
         birthdate: currentUser.birthdate ?? '',
       });
+      setSkills(currentUser.skills?.map((skill) => skill.label) ?? []);
+      setSkillInput('');
       // Pre-fill home address if already set
       if (currentUser.homeAddress) {
         setHomePlace({
@@ -79,6 +84,21 @@ export default function EditProfilePage() {
     setPhotoPreview(URL.createObjectURL(file));
   }
 
+  function addSkill(nextSkill = skillInput) {
+    const normalized = sanitizeProfileSkills([...skills, nextSkill]);
+    if (normalized.length === skills.length) {
+      setSkillInput('');
+      return;
+    }
+
+    setSkills(normalized.slice(0, MAX_PROFILE_SKILLS));
+    setSkillInput('');
+  }
+
+  function removeSkill(skillLabel: string) {
+    setSkills((prev) => prev.filter((skill) => skill !== skillLabel));
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!form.name.trim() || form.name.trim().length < 2) {
@@ -92,6 +112,11 @@ export default function EditProfilePage() {
     const birthdateError = validateBirthdate(form.birthdate);
     if (birthdateError) {
       setError(birthdateError);
+      return;
+    }
+    const skillErrors = validateProfileSkills(skills);
+    if (skillErrors.length > 0) {
+      setError(skillErrors[0]);
       return;
     }
     setSubmitting(true);
@@ -113,6 +138,7 @@ export default function EditProfilePage() {
         gender: form.gender || undefined,
         birthdate: form.birthdate || null,
         photoUrl,
+        skills,
       });
 
       await updateHomeLocation(
@@ -207,6 +233,51 @@ export default function EditProfilePage() {
             <textarea rows={3} value={form.bio} onChange={setField('bio')}
               placeholder={lang === 'he' ? 'ספר קצת על עצמך...' : 'Tell us about yourself...'}
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300" />
+          </Field>
+          <Field label={lang === 'he' ? 'Skills / מיומנויות' : 'Skills'}>
+            <div className="flex gap-2">
+              <Input
+                value={skillInput}
+                onChange={(event) => setSkillInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ',') {
+                    event.preventDefault();
+                    addSkill();
+                  }
+                }}
+                placeholder={lang === 'he' ? 'למשל: סיומת, דריבל, 1 על 1' : 'e.g. Finishing, Dribbling, 1v1 defense'}
+                disabled={skills.length >= MAX_PROFILE_SKILLS}
+              />
+              <button
+                type="button"
+                onClick={() => addSkill()}
+                disabled={!skillInput.trim() || skills.length >= MAX_PROFILE_SKILLS}
+                className="shrink-0 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
+              >
+                {lang === 'he' ? 'הוסף' : 'Add'}
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-gray-400">
+              {lang === 'he'
+                ? `אפשר להוסיף עד ${MAX_PROFILE_SKILLS} מיומנויות. מבקרים בפרופיל יוכלו לעשות להן לייק.`
+                : `Add up to ${MAX_PROFILE_SKILLS} skills. Profile visitors will be able to like them.`}
+            </p>
+            {skills.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {skills.map((skill) => (
+                  <span key={skill} className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-sm font-medium text-primary-700">
+                    {skill}
+                    <button
+                      type="button"
+                      onClick={() => removeSkill(skill)}
+                      className="text-primary-500 transition-colors hover:text-primary-700"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </Field>
         </div>
 

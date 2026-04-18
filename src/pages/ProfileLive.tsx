@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Clock, MapPin, Pencil, Trophy, UserCheck, UserPlus, UserX, X } from 'lucide-react';
+import { ChevronLeft, Clock, MapPin, Pencil, ThumbsUp, Trophy, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
-import { fetchCompetitivePointHistory, fetchProfileLobbyHistory } from '../lib/appData';
+import { fetchCompetitivePointHistory, fetchProfileLobbyHistory, toggleProfileSkillEndorsement } from '../lib/appData';
 import { getTeamColorLabel } from '../lib/teamAssignment';
 import type { AuthUser, CompetitivePointHistoryEntry, LobbyHistoryEntry, TeamColor } from '../types';
 
@@ -38,7 +38,7 @@ export default function ProfileLive() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { lang } = useLang();
-  const { currentUser, getAllUsers, sendFriendRequest, acceptFriendRequest, declineFriendRequest, removeFriend } = useAuth();
+  const { currentUser, getAllUsers, sendFriendRequest, acceptFriendRequest, declineFriendRequest, removeFriend, refreshCurrentUser } = useAuth();
   const [actionError, setActionError] = useState('');
   const [busyAction, setBusyAction] = useState('');
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
@@ -174,6 +174,7 @@ export default function ProfileLive() {
   }
 
   const competitivePointsTotal = profile?.competitivePoints ?? 0;
+  const profileSkills = profile?.skills ?? [];
   const hasCompetitiveHistory = loadingCompetitiveHistory || competitiveHistory.length > 0 || competitivePointsTotal > 0;
   const hasLobbyHistory = loadingLobbyHistory || lobbyHistory.length > 0;
   const latestCompetitiveGain = competitiveHistory[0]?.points ?? null;
@@ -188,6 +189,17 @@ export default function ProfileLive() {
     const maxRank = entry.maxRank ?? (entry.rank > 1 ? entry.rank : undefined);
     return maxRank != null && entry.rank === maxRank;
   }).length;
+
+  async function handleToggleSkillLike(skillId: string, currentlyEndorsed: boolean) {
+    if (!currentUser || isMe) {
+      return;
+    }
+
+    await runAction(`skill-${skillId}`, async () => {
+      await toggleProfileSkillEndorsement(skillId, currentUser.id, currentlyEndorsed);
+      await refreshCurrentUser();
+    });
+  }
 
   const historyTabs = [
     hasCompetitiveHistory
@@ -398,6 +410,64 @@ export default function ProfileLive() {
           />
         </div>
       </div>
+
+      {(profileSkills.length > 0 || isMe) && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-gray-900">{lang === 'he' ? 'Skills / מיומנויות' : 'Skills'}</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                {lang === 'he'
+                  ? 'מבקרים בפרופיל יכולים לעשות לייק למיומנויות שלך.'
+                  : 'Profile visitors can like skills that match what you are good at.'}
+              </p>
+            </div>
+            {isMe && (
+              <button
+                type="button"
+                onClick={() => navigate(`/profile/${currentUser!.id}/edit`)}
+                className="text-xs font-semibold text-primary-600 hover:underline"
+              >
+                {lang === 'he' ? 'ערוך skills' : 'Edit skills'}
+              </button>
+            )}
+          </div>
+
+          {profileSkills.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {profileSkills.map((skill) => (
+                <button
+                  key={skill.id}
+                  type="button"
+                  disabled={!currentUser || isMe}
+                  onClick={() => void handleToggleSkillLike(skill.id, skill.viewerHasEndorsed)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
+                    skill.viewerHasEndorsed
+                      ? 'border-primary-600 bg-primary-600 text-white'
+                      : 'border-primary-100 bg-primary-50 text-primary-700 hover:border-primary-300'
+                  } ${!currentUser || isMe ? 'cursor-default' : ''}`}
+                >
+                  <span>{skill.label}</span>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
+                    skill.viewerHasEndorsed
+                      ? 'bg-white/20 text-white'
+                      : 'bg-white text-primary-600'
+                  }`}>
+                    <ThumbsUp size={12} />
+                    {skill.endorsementCount}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              {lang === 'he'
+                ? 'עדיין לא הוגדרו skills בפרופיל הזה.'
+                : 'No skills have been added to this profile yet.'}
+            </p>
+          )}
+        </div>
+      )}
 
       {historyTabs.length > 0 && (
         <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-2 shadow-sm">

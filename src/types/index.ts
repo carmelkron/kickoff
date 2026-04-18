@@ -28,6 +28,13 @@ export interface LobbyHistoryEntry {
   ratingChange: number;
 }
 
+export interface ProfileSkill {
+  id: string;
+  label: string;
+  endorsementCount: number;
+  viewerHasEndorsed: boolean;
+}
+
 export interface Player {
   id: string;
   name: string;
@@ -44,6 +51,7 @@ export interface Player {
   photoUrl?: string;
   gender?: Gender;
   birthdate?: string;
+  skills?: ProfileSkill[];
   ratingHistory: RatingEntry[];
   lobbyHistory: LobbyHistoryEntry[];
 }
@@ -197,6 +205,7 @@ export interface AuthUser {
   birthdate?: string;
   ratingHistory: RatingEntry[];
   lobbyHistory: LobbyHistoryEntry[];
+  skills?: ProfileSkill[];
   competitivePoints?: number;
   competitiveGamesPlayed?: number;
   competitivePointsPerGame?: number;

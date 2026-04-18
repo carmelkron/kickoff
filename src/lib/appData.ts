@@ -1,4 +1,4 @@
-import type { Lobby, Player, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry, LobbyAccessType, LobbyInvite, LobbyInviteStatus, LobbyJoinRequest, LobbyJoinRequestStatus, LobbyMessage } from '../types';
+import type { Lobby, Player, ProfileSkill, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry, LobbyAccessType, LobbyInvite, LobbyInviteStatus, LobbyJoinRequest, LobbyJoinRequestStatus, LobbyMessage } from '../types';
 import {
   createCompetitiveResultNotifications,
   createFriendJoinedLobbyNotifications,
@@ -13,7 +13,7 @@ import {
   markWaitlistSpotNotificationsHandled,
 } from './appNotifications';
 import { requireSupabase } from './supabase';
-import { getJoinLobbyError, getJoinLobbyTargetStatus, normalizeText, validateCreateLobbyPayload } from './validation';
+import { getJoinLobbyError, getJoinLobbyTargetStatus, normalizeText, sanitizeProfileSkills, validateCreateLobbyPayload, validateProfileSkills } from './validation';
 import { calculateCompetitiveStandings } from './competitiveResults';
 import { buildLobbyHistoryEntries, type LobbyHistoryMembershipRow } from './lobbyHistory';
 import {
@@ -135,6 +135,18 @@ type ProfileRow = {
   birthdate: string | null;
   rating_history: RatingEntry[];
   lobby_history: LobbyHistoryEntry[];
+};
+
+type ProfileSkillRow = {
+  id: string;
+  profile_id: string;
+  label: string;
+  created_at: string;
+};
+
+type ProfileSkillEndorsementRow = {
+  profile_skill_id: string;
+  endorsed_by_profile_id: string;
 };
 
 type LobbyRow = {
@@ -432,12 +444,93 @@ function mapProfile(row: ProfileRow, stats?: CompetitiveProfileStats): Player {
     photoUrl: row.photo_url ?? undefined,
     gender: row.gender ?? undefined,
     birthdate: row.birthdate ?? undefined,
+    skills: [],
     competitivePoints,
     competitiveGamesPlayed,
     competitivePointsPerGame,
     ratingHistory: row.rating_history ?? [],
     lobbyHistory: row.lobby_history ?? [],
   };
+}
+
+export async function fetchProfileSkillsMap(
+  profileIds: string[],
+  viewerProfileId?: string | null,
+): Promise<Map<string, ProfileSkill[]>> {
+  const uniqueProfileIds = [...new Set(profileIds.filter(Boolean))];
+  if (uniqueProfileIds.length === 0) {
+    return new Map();
+  }
+
+  const supabase = requireSupabase();
+  const { data: skillRows, error: skillsError } = await supabase
+    .from('profile_skills')
+    .select('id, profile_id, label, created_at')
+    .in('profile_id', uniqueProfileIds)
+    .order('created_at', { ascending: true });
+
+  if (skillsError) {
+    throw skillsError;
+  }
+
+  const skills = (skillRows ?? []) as ProfileSkillRow[];
+  const profileSkillsMap = new Map<string, ProfileSkill[]>(
+    uniqueProfileIds.map((profileId) => [profileId, []]),
+  );
+
+  if (skills.length === 0) {
+    return profileSkillsMap;
+  }
+
+  const skillIds = skills.map((skill) => skill.id);
+  const [
+    { data: endorsementRows, error: endorsementsError },
+    viewerEndorsementsResult,
+  ] = await Promise.all([
+    supabase
+      .from('profile_skill_endorsements')
+      .select('profile_skill_id, endorsed_by_profile_id')
+      .in('profile_skill_id', skillIds),
+    viewerProfileId
+      ? supabase
+          .from('profile_skill_endorsements')
+          .select('profile_skill_id')
+          .eq('endorsed_by_profile_id', viewerProfileId)
+          .in('profile_skill_id', skillIds)
+      : Promise.resolve({ data: [] as Array<{ profile_skill_id: string }>, error: null }),
+  ]);
+
+  if (endorsementsError) {
+    throw endorsementsError;
+  }
+  if (viewerEndorsementsResult.error) {
+    throw viewerEndorsementsResult.error;
+  }
+
+  const endorsementCountBySkillId = new Map<string, number>();
+  for (const row of (endorsementRows ?? []) as ProfileSkillEndorsementRow[]) {
+    endorsementCountBySkillId.set(
+      row.profile_skill_id,
+      (endorsementCountBySkillId.get(row.profile_skill_id) ?? 0) + 1,
+    );
+  }
+
+  const viewerEndorsedSkillIds = new Set(
+    ((viewerEndorsementsResult.data ?? []) as Array<{ profile_skill_id: string }>).map((row) => row.profile_skill_id),
+  );
+
+  for (const skill of skills) {
+    const current = profileSkillsMap.get(skill.profile_id) ?? [];
+    current.push({
+      id: skill.id,
+      label: skill.label,
+      endorsementCount: endorsementCountBySkillId.get(skill.id) ?? 0,
+      viewerHasEndorsed: viewerEndorsedSkillIds.has(skill.id),
+    });
+    profileSkillsMap.set(skill.profile_id, current);
+  }
+
+  return profileSkillsMap;
 }
 
 export async function fetchCompetitiveProfileStats(profileIds: string[]): Promise<Map<string, CompetitiveProfileStats>> {
@@ -478,6 +571,7 @@ export async function fetchCompetitiveProfileStats(profileIds: string[]): Promis
 
 export async function fetchProfiles(): Promise<Player[]> {
   const supabase = requireSupabase();
+  const currentProfileId = await fetchCurrentProfileId();
   const { data, error } = await supabase
     .from('profiles')
     .select(PROFILE_SELECT_FIELDS)
@@ -489,11 +583,16 @@ export async function fetchProfiles(): Promise<Player[]> {
 
   const profiles = (data ?? []) as ProfileRow[];
   const competitiveStatsByProfileId = await fetchCompetitiveProfileStats(profiles.map((profile) => profile.id));
-  return profiles.map((profile) => mapProfile(profile, competitiveStatsByProfileId.get(profile.id)));
+  const skillsByProfileId = await fetchProfileSkillsMap(profiles.map((profile) => profile.id), currentProfileId);
+  return profiles.map((profile) => ({
+    ...mapProfile(profile, competitiveStatsByProfileId.get(profile.id)),
+    skills: skillsByProfileId.get(profile.id) ?? [],
+  }));
 }
 
 export async function fetchProfileById(id: string): Promise<Player | null> {
   const supabase = requireSupabase();
+  const currentProfileId = await fetchCurrentProfileId();
   const { data, error } = await supabase
     .from('profiles')
     .select(PROFILE_SELECT_FIELDS)
@@ -509,7 +608,11 @@ export async function fetchProfileById(id: string): Promise<Player | null> {
   }
 
   const competitiveStatsByProfileId = await fetchCompetitiveProfileStats([id]);
-  return mapProfile(data as ProfileRow, competitiveStatsByProfileId.get(id));
+  const skillsByProfileId = await fetchProfileSkillsMap([id], currentProfileId);
+  return {
+    ...mapProfile(data as ProfileRow, competitiveStatsByProfileId.get(id)),
+    skills: skillsByProfileId.get(id) ?? [],
+  };
 }
 
 export async function fetchProfileLobbyHistory(profileId: string): Promise<LobbyHistoryEntry[]> {
@@ -576,10 +679,17 @@ export type UpdateProfileInput = {
   gender?: Gender;
   birthdate?: string | null;
   photoUrl?: string | null;
+  skills?: string[];
 };
 
 export async function updateProfile(input: UpdateProfileInput) {
   const supabase = requireSupabase();
+  const normalizedSkills = input.skills !== undefined ? sanitizeProfileSkills(input.skills) : undefined;
+  const skillErrors = normalizedSkills ? validateProfileSkills(normalizedSkills) : [];
+  if (skillErrors.length > 0) {
+    throw new Error(skillErrors[0]);
+  }
+
   const parts = input.name.trim().split(' ').filter(Boolean);
   const initials = parts.length >= 2
     ? `${parts[0][0]}${parts[1][0]}`.toUpperCase()
@@ -597,6 +707,103 @@ export async function updateProfile(input: UpdateProfileInput) {
       ...(input.photoUrl !== undefined ? { photo_url: input.photoUrl } : {}),
     })
     .eq('id', input.profileId);
+
+  if (error) {
+    throw error;
+  }
+
+  if (input.skills !== undefined) {
+    const nextSkills = normalizedSkills ?? [];
+    const { data: existingSkillRows, error: existingSkillsError } = await supabase
+      .from('profile_skills')
+      .select('id, label')
+      .eq('profile_id', input.profileId);
+
+    if (existingSkillsError) {
+      throw existingSkillsError;
+    }
+
+    const existingSkills = (existingSkillRows ?? []) as Array<{ id: string; label: string }>;
+    const existingByNormalizedLabel = new Map(
+      existingSkills.map((skill) => [normalizeText(skill.label).toLocaleLowerCase(), skill]),
+    );
+    const nextNormalizedLabels = new Set(nextSkills.map((skill) => skill.toLocaleLowerCase()));
+    const removableSkillIds = existingSkills
+      .filter((skill) => !nextNormalizedLabels.has(normalizeText(skill.label).toLocaleLowerCase()))
+      .map((skill) => skill.id);
+    const insertableSkills = nextSkills.filter((skill) => !existingByNormalizedLabel.has(skill.toLocaleLowerCase()));
+
+    if (removableSkillIds.length > 0) {
+      const { error: deleteSkillsError } = await supabase
+        .from('profile_skills')
+        .delete()
+        .eq('profile_id', input.profileId)
+        .in('id', removableSkillIds);
+
+      if (deleteSkillsError) {
+        throw deleteSkillsError;
+      }
+    }
+
+    if (insertableSkills.length > 0) {
+      const { error: insertSkillsError } = await supabase
+        .from('profile_skills')
+        .insert(insertableSkills.map((label) => ({
+          profile_id: input.profileId,
+          label,
+        })));
+
+      if (insertSkillsError) {
+        throw insertSkillsError;
+      }
+    }
+  }
+}
+
+export async function toggleProfileSkillEndorsement(
+  profileSkillId: string,
+  endorsedByProfileId: string,
+  currentlyEndorsed: boolean,
+) {
+  const supabase = requireSupabase();
+  const { data: skillRow, error: skillError } = await supabase
+    .from('profile_skills')
+    .select('id, profile_id')
+    .eq('id', profileSkillId)
+    .maybeSingle();
+
+  if (skillError) {
+    throw skillError;
+  }
+
+  if (!skillRow) {
+    throw new Error('Skill not found.');
+  }
+
+  if ((skillRow as { profile_id: string }).profile_id === endorsedByProfileId) {
+    throw new Error('You cannot like your own skill.');
+  }
+
+  if (currentlyEndorsed) {
+    const { error } = await supabase
+      .from('profile_skill_endorsements')
+      .delete()
+      .eq('profile_skill_id', profileSkillId)
+      .eq('endorsed_by_profile_id', endorsedByProfileId);
+
+    if (error) {
+      throw error;
+    }
+
+    return;
+  }
+
+  const { error } = await supabase
+    .from('profile_skill_endorsements')
+    .insert({
+      profile_skill_id: profileSkillId,
+      endorsed_by_profile_id: endorsedByProfileId,
+    });
 
   if (error) {
     throw error;

@@ -5,7 +5,7 @@ import {
   createFriendRequestResolutionNotification,
   markFriendRequestNotificationsHandled,
 } from '../lib/appNotifications';
-import { fetchCompetitiveProfileStats } from '../lib/appData';
+import { fetchCompetitiveProfileStats, fetchProfileSkillsMap } from '../lib/appData';
 import { requireSupabase } from '../lib/supabase';
 import { uploadAvatar } from '../lib/storage';
 import { normalizeText, validateRegisterDraft } from '../lib/validation';
@@ -73,6 +73,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 function mapProfileToAuthUser(
   profile: ProfileRow,
   competitiveGamesPlayed = 0,
+  skills: AuthUser['skills'] = [],
   overrides?: Partial<AuthUser>,
 ): AuthUser {
   const competitivePoints = profile.competitive_points ?? 0;
@@ -97,6 +98,7 @@ function mapProfileToAuthUser(
     photoUrl: profile.photo_url ?? undefined,
     gender: profile.gender ?? undefined,
     birthdate: profile.birthdate ?? undefined,
+    skills,
     ratingHistory: profile.rating_history ?? [],
     lobbyHistory: profile.lobby_history ?? [],
     friends: [],
@@ -231,12 +233,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const profiles = (profilesData ?? []) as ProfileRow[];
+    const viewerProfileId = authUserId
+      ? (profiles.find((profile) => profile.auth_user_id === authUserId)?.id ?? null)
+      : null;
     const competitiveStatsByProfileId = await fetchCompetitiveProfileStats(profiles.map((profile) => profile.id));
+    const skillsByProfileId = await fetchProfileSkillsMap(profiles.map((profile) => profile.id), viewerProfileId);
     setAllUsers(
       profiles.map((profile) =>
         mapProfileToAuthUser(
           profile,
           competitiveStatsByProfileId.get(profile.id)?.competitiveGamesPlayed ?? 0,
+          skillsByProfileId.get(profile.id) ?? [],
         ),
       ),
     );
@@ -285,6 +292,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mapProfileToAuthUser(
         currentProfile,
         competitiveStatsByProfileId.get(currentProfile.id)?.competitiveGamesPlayed ?? 0,
+        skillsByProfileId.get(currentProfile.id) ?? [],
         {
           friends,
           sentRequests,

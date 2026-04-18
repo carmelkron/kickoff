@@ -3,6 +3,8 @@ import { calculateAgeOnDate, validateBirthdate } from '../utils/age';
 
 export const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 export const ALLOWED_AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+export const MAX_PROFILE_SKILLS = 8;
+export const MAX_PROFILE_SKILL_LENGTH = 32;
 
 export type RegisterDraft = {
   name: string;
@@ -56,6 +58,46 @@ export function normalizeText(value: string) {
 
 export function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+export function sanitizeProfileSkills(skills: string[]) {
+  const seen = new Set<string>();
+  const sanitized: string[] = [];
+
+  for (const skill of skills) {
+    const normalized = normalizeText(skill);
+    if (!normalized) {
+      continue;
+    }
+
+    const dedupeKey = normalized.toLocaleLowerCase();
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+
+    seen.add(dedupeKey);
+    sanitized.push(normalized);
+  }
+
+  return sanitized;
+}
+
+export function validateProfileSkills(skills: string[]) {
+  const sanitized = sanitizeProfileSkills(skills);
+  const errors: string[] = [];
+
+  if (sanitized.length > MAX_PROFILE_SKILLS) {
+    errors.push(`Choose up to ${MAX_PROFILE_SKILLS} skills.`);
+  }
+
+  for (const skill of sanitized) {
+    if (skill.length < 2 || skill.length > MAX_PROFILE_SKILL_LENGTH) {
+      errors.push(`Each skill must be between 2 and ${MAX_PROFILE_SKILL_LENGTH} characters.`);
+      break;
+    }
+  }
+
+  return errors;
 }
 
 export function validateRegisterDraft(input: RegisterDraft) {

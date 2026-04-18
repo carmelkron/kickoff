@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Lobby, Player } from '../types';
-import { getJoinLobbyError, getJoinLobbyTargetStatus, validateCreateLobbyDraft, validateRegisterDraft } from './validation';
+import { getJoinLobbyError, getJoinLobbyTargetStatus, sanitizeProfileSkills, validateCreateLobbyDraft, validateProfileSkills, validateRegisterDraft } from './validation';
 
 function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
@@ -77,6 +77,20 @@ describe('validateRegisterDraft', () => {
     expect(errors).toContain('Bio must be 280 characters or fewer.');
     expect(errors).toContain('Profile photo must be a JPG, PNG, or WebP image.');
     expect(errors).toContain('Profile photo must be 2 MB or smaller.');
+  });
+});
+
+describe('profile skills helpers', () => {
+  it('sanitizes and deduplicates skills', () => {
+    expect(sanitizeProfileSkills(['  Finishing ', 'finishing', '', '1v1 defending'])).toEqual([
+      'Finishing',
+      '1v1 defending',
+    ]);
+  });
+
+  it('rejects too many or invalid skills', () => {
+    expect(validateProfileSkills(['A'])).toContain('Each skill must be between 2 and 32 characters.');
+    expect(validateProfileSkills(['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'])).toContain('Choose up to 8 skills.');
   });
 });
 
