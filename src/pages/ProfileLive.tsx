@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Clock, MapPin, Pencil, ThumbsUp, Trophy, UserCheck, UserPlus, UserX, X } from 'lucide-react';
+import { ChevronLeft, Clock, Copy, MapPin, Pencil, ThumbsUp, Trophy, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
@@ -605,26 +605,40 @@ export default function ProfileLive() {
           <h2 className="font-semibold text-gray-900 mb-4">{lang === 'he' ? 'משחקים אחרונים' : 'Recent Games'}</h2>
           <div className="space-y-3">
             {lobbyHistory.map((entry, index) => (
-              <button
+              <div
                 key={`${entry.lobbyId}-${index}`}
-                type="button"
-                onClick={() => navigate(`/lobby/${entry.lobbyId}`)}
-                className="flex w-full items-center gap-3 rounded-xl border-b border-gray-50 py-2 text-start transition-colors hover:bg-gray-50 last:border-0"
+                className="flex items-center gap-3 rounded-xl border-b border-gray-50 py-2 last:border-0"
               >
-                <div className="w-9 h-9 bg-primary-50 rounded-xl flex items-center justify-center shrink-0">
-                  <MapPin size={15} className="text-primary-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{entry.lobbyTitle}</p>
-                  <p className="text-xs text-gray-400">{entry.city}</p>
-                </div>
-                <div className="text-end shrink-0">
-                  <p className="text-xs text-gray-400">{new Date(entry.date).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US')}</p>
-                  <span className="text-xs font-medium text-gray-400">
-                    {lang === 'he' ? 'לצפייה בלובי' : 'Open lobby'}
-                  </span>
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/lobby/${entry.lobbyId}`)}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-start transition-colors hover:bg-gray-50 rounded-xl px-1 py-1"
+                >
+                  <div className="w-9 h-9 bg-primary-50 rounded-xl flex items-center justify-center shrink-0">
+                    <MapPin size={15} className="text-primary-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{entry.lobbyTitle}</p>
+                    <p className="text-xs text-gray-400">{entry.city}</p>
+                  </div>
+                  <div className="text-end shrink-0">
+                    <p className="text-xs text-gray-400">{new Date(entry.date).toLocaleDateString(lang === 'he' ? 'he-IL' : 'en-US')}</p>
+                    <span className="text-xs font-medium text-gray-400">
+                      {lang === 'he' ? 'לצפייה בלובי' : 'Open lobby'}
+                    </span>
+                  </div>
+                </button>
+                {isMe && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/create?duplicateFrom=${encodeURIComponent(entry.lobbyId)}`)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-primary-200 px-3 py-2 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-50"
+                  >
+                    <Copy size={13} />
+                    {lang === 'he' ? 'שכפל' : 'Duplicate'}
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>

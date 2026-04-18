@@ -19,6 +19,12 @@ import { getPreferredPositionLabel, getTeamColorLabel, normalizePreferredPositio
 import { calculateCompetitiveStandings } from '../lib/competitiveResults';
 
 type MyStatus = 'none' | 'joined' | 'waitlisted' | 'pending_confirm';
+type LobbyDuplicationSummary = {
+  sourceLobbyTitle: string;
+  reinviteAttempted: boolean;
+  invitedCount: number;
+  skippedCount: number;
+};
 
 function avgCompetitivePoints(players: Array<{ competitivePoints?: number }>) {
   if (!players.length) {
@@ -99,6 +105,7 @@ export default function LobbyDetailLive() {
   const [sharingLobby, setSharingLobby] = useState(false);
 
   const shareTokenFromUrl = new URLSearchParams(location.search).get('share');
+  const duplicationSummary = (location.state as { duplicationSummary?: LobbyDuplicationSummary } | null)?.duplicationSummary;
 
   async function loadLobby() {
     if (!id) {
@@ -698,6 +705,22 @@ export default function LobbyDetailLive() {
       {shareFeedback && canManageCurrentLobby && (
         <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-800">
           {shareFeedback}
+        </div>
+      )}
+
+      {duplicationSummary && (
+        <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {duplicationSummary.reinviteAttempted
+            ? (
+                lang === 'he'
+                  ? `הלובי שוכפל מ-${duplicationSummary.sourceLobbyTitle}. נשלחו ${duplicationSummary.invitedCount} הזמנות מחדש${duplicationSummary.skippedCount > 0 ? `, ו-${duplicationSummary.skippedCount} משתתפים דולגו כי כרגע אי אפשר להזמין אותם.` : '.'}`
+                  : `This lobby was duplicated from ${duplicationSummary.sourceLobbyTitle}. ${duplicationSummary.invitedCount} invitations were sent again${duplicationSummary.skippedCount > 0 ? `, and ${duplicationSummary.skippedCount} previous participants were skipped because they cannot be invited right now.` : '.'}`
+              )
+            : (
+                lang === 'he'
+                  ? `הלובי שוכפל מ-${duplicationSummary.sourceLobbyTitle}.`
+                  : `This lobby was duplicated from ${duplicationSummary.sourceLobbyTitle}.`
+              )}
         </div>
       )}
 

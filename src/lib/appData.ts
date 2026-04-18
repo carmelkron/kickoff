@@ -2368,6 +2368,39 @@ export async function createLobbyInvite(lobbyId: string, invitedByProfileId: str
   await createLobbyInviteNotification(invitedByProfileId, inviter.name, invitedProfileId, lobby);
 }
 
+export type ReinviteLobbyParticipantsSummary = {
+  requestedCount: number;
+  invitedCount: number;
+  skippedCount: number;
+};
+
+export async function reinviteLobbyParticipants(
+  lobbyId: string,
+  invitedByProfileId: string,
+  invitedProfileIds: string[],
+): Promise<ReinviteLobbyParticipantsSummary> {
+  const uniqueProfileIds = [...new Set(
+    invitedProfileIds.filter((profileId) => profileId && profileId !== invitedByProfileId),
+  )];
+  let invitedCount = 0;
+  let skippedCount = 0;
+
+  for (const invitedProfileId of uniqueProfileIds) {
+    try {
+      await createLobbyInvite(lobbyId, invitedByProfileId, invitedProfileId);
+      invitedCount += 1;
+    } catch {
+      skippedCount += 1;
+    }
+  }
+
+  return {
+    requestedCount: uniqueProfileIds.length,
+    invitedCount,
+    skippedCount,
+  };
+}
+
 export async function requestLobbyAccess(lobbyId: string, requesterProfileId: string) {
   const supabase = requireSupabase();
   const [lobby, requester] = await Promise.all([
