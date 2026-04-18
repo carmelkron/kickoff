@@ -4,6 +4,7 @@ import { Camera, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useLang } from '../contexts/LanguageContext';
 import { updateProfile, updateHomeLocation } from '../lib/appData';
+import { getProfileSkillBadgeStyle } from '../lib/profileSkillBadges';
 import { uploadAvatar } from '../lib/storage';
 import type { Gender } from '../types';
 import { MAX_PROFILE_SKILLS, sanitizeProfileSkills, validateProfileSkills } from '../lib/validation';
@@ -263,19 +264,30 @@ export default function EditProfilePage() {
                 : `Add up to ${MAX_PROFILE_SKILLS} skills. Profile visitors will be able to like them.`}
             </p>
             {skills.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {skills.map((skill) => (
-                  <span key={skill} className="inline-flex items-center gap-2 rounded-full bg-primary-50 px-3 py-1 text-sm font-medium text-primary-700">
-                    {skill}
-                    <button
-                      type="button"
-                      onClick={() => removeSkill(skill)}
-                      className="text-primary-500 transition-colors hover:text-primary-700"
+              <div className="mt-3 flex flex-wrap gap-3">
+                {skills.map((skill) => {
+                  const badgeStyle = getProfileSkillBadgeStyle(skill);
+
+                  return (
+                    <span
+                      key={skill}
+                      className={`inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-medium shadow-sm ${badgeStyle.chipClassName}`}
                     >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/70 text-base">
+                        {badgeStyle.icon}
+                      </span>
+                      <span>{skill}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeSkill(skill)}
+                        className="rounded-full bg-white/70 px-1.5 py-0.5 text-sm text-transparent transition-colors hover:bg-white"
+                      >
+                        <span className="text-gray-700">&times;</span>
                       ×
                     </button>
-                  </span>
-                ))}
+                    </span>
+                  );
+                })}
               </div>
             )}
           </Field>

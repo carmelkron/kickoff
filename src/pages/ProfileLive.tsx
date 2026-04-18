@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { fetchCompetitivePointHistory, fetchProfileLobbyHistory, toggleProfileSkillEndorsement } from '../lib/appData';
+import { getProfileSkillBadgeStyle } from '../lib/profileSkillBadges';
 import { getTeamColorLabel } from '../lib/teamAssignment';
 import type { AuthUser, CompetitivePointHistoryEntry, LobbyHistoryEntry, TeamColor } from '../types';
 
@@ -434,29 +435,46 @@ export default function ProfileLive() {
           </div>
 
           {profileSkills.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {profileSkills.map((skill) => (
-                <button
-                  key={skill.id}
-                  type="button"
-                  disabled={!currentUser || isMe}
-                  onClick={() => void handleToggleSkillLike(skill.id, skill.viewerHasEndorsed)}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors ${
-                    skill.viewerHasEndorsed
-                      ? 'border-primary-600 bg-primary-600 text-white'
-                      : 'border-primary-100 bg-primary-50 text-primary-700 hover:border-primary-300'
-                  } ${!currentUser || isMe ? 'cursor-default' : ''}`}
-                >
-                  <span>{skill.label}</span>
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-                    skill.viewerHasEndorsed
-                      ? 'bg-white/20 text-white'
-                      : 'bg-white text-primary-600'
-                  }`}>
-                    <ThumbsUp size={12} />
-                    {skill.endorsementCount}
-                  </span>
-                </button>
+                (() => {
+                  const badgeStyle = getProfileSkillBadgeStyle(skill.label);
+
+                  return (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      disabled={!currentUser || isMe}
+                      onClick={() => void handleToggleSkillLike(skill.id, skill.viewerHasEndorsed)}
+                      className={`group inline-flex min-w-[150px] items-center gap-3 rounded-2xl border px-3.5 py-3 text-sm font-medium shadow-sm transition-all ${
+                        skill.viewerHasEndorsed
+                          ? 'border-primary-500 bg-primary-600 text-white shadow-primary-100'
+                          : `${badgeStyle.chipClassName} hover:-translate-y-0.5 hover:shadow-md`
+                      } ${!currentUser || isMe ? 'cursor-default' : ''}`}
+                    >
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-lg ${
+                        skill.viewerHasEndorsed
+                          ? 'bg-white/15'
+                          : 'bg-white/70'
+                      }`}>
+                        {badgeStyle.icon}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-start font-semibold">
+                          {skill.label}
+                        </span>
+                        <span className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
+                          skill.viewerHasEndorsed
+                            ? 'bg-white/20 text-white'
+                            : badgeStyle.countClassName
+                        }`}>
+                          <ThumbsUp size={12} />
+                          {skill.endorsementCount}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })()
               ))}
             </div>
           ) : (
