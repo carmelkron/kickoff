@@ -219,7 +219,7 @@ create table if not exists public.lobby_team_results (
   lobby_team_id uuid not null,
   wins integer not null default 0 check (wins >= 0),
   rank numeric(4, 2) not null check (rank between 1 and 4),
-  awarded_points integer not null check (awarded_points >= 0 and awarded_points % 5 = 0),
+  awarded_points integer not null check (awarded_points % 5 = 0),
   created_at timestamptz not null default now(),
   primary key (lobby_id, lobby_team_id),
   foreign key (lobby_id) references public.lobby_results (lobby_id) on delete cascade,
@@ -235,11 +235,16 @@ create table if not exists public.competitive_point_events (
   team_number integer not null check (team_number between 1 and 4),
   wins integer not null default 0 check (wins >= 0),
   rank numeric(4, 2) not null check (rank between 1 and 4),
-  points integer not null check (points >= 0 and points % 5 = 0),
+  points integer not null check (points % 5 = 0),
   reason text not null default 'competitive_lobby_result' check (reason in ('competitive_lobby_result')),
   created_at timestamptz not null default now(),
   unique (lobby_id, profile_id)
 );
+
+alter table public.lobby_team_results drop constraint if exists lobby_team_results_awarded_points_check;
+alter table public.lobby_team_results add constraint lobby_team_results_awarded_points_check check (awarded_points % 5 = 0);
+alter table public.competitive_point_events drop constraint if exists competitive_point_events_points_check;
+alter table public.competitive_point_events add constraint competitive_point_events_points_check check (points % 5 = 0);
 
 create index if not exists profiles_auth_user_id_idx on public.profiles (auth_user_id);
 create index if not exists lobbies_datetime_idx on public.lobbies (datetime);

@@ -125,6 +125,8 @@ export interface LobbyTeamResult {
   wins: number;
   rank: number;
   awardedPoints: number;
+  awardedPointsMax?: number;
+  playerAwardedPoints?: Record<string, number>;
 }
 
 export interface LobbyTeamStanding extends LobbyTeamResult {

@@ -23,6 +23,10 @@ function teamColorClassName(color: TeamColor) {
   return 'bg-green-500';
 }
 
+function formatSignedPoints(points: number) {
+  return points > 0 ? `+${points}` : `${points}`;
+}
+
 function formatRankLabel(rank: number, lang: 'he' | 'en') {
   const roundedRank = Number.isInteger(rank) ? `${rank}` : rank.toFixed(1);
   return lang === 'he' ? `מקום ${roundedRank}` : `Place ${roundedRank}`;
@@ -169,10 +173,7 @@ export default function ProfileLive() {
     }
   }
 
-  const competitivePointsTotal =
-    competitiveHistory.length > 0
-      ? competitiveHistory.reduce((sum, entry) => sum + entry.points, 0)
-      : profile?.competitivePoints ?? 0;
+  const competitivePointsTotal = profile?.competitivePoints ?? 0;
   const hasCompetitiveHistory = loadingCompetitiveHistory || competitiveHistory.length > 0 || competitivePointsTotal > 0;
   const hasLobbyHistory = loadingLobbyHistory || lobbyHistory.length > 0;
   const latestCompetitiveGain = competitiveHistory[0]?.points ?? null;
@@ -365,11 +366,17 @@ export default function ProfileLive() {
           <StatBox
             value={
               latestCompetitiveGain != null
-                ? `+${latestCompetitiveGain}`
+                ? formatSignedPoints(latestCompetitiveGain)
                 : '—'
             }
-            label={lang === 'he' ? 'רווח אחרון' : 'Latest gain'}
-            color={latestCompetitiveGain != null ? 'text-green-600' : 'text-gray-400'}
+            label={lang === 'he' ? 'שינוי אחרון' : 'Latest change'}
+            color={
+              latestCompetitiveGain == null
+                ? 'text-gray-400'
+                : latestCompetitiveGain >= 0
+                  ? 'text-green-600'
+                  : 'text-red-600'
+            }
           />
         </div>
       </div>
@@ -457,7 +464,7 @@ export default function ProfileLive() {
                       </div>
                     </div>
                     <div className="shrink-0 text-end">
-                      <p className="text-sm font-semibold text-primary-700">+{entry.points}</p>
+                      <p className="text-sm font-semibold text-primary-700">{formatSignedPoints(entry.points)}</p>
                       <p className="text-xs text-gray-400">{lang === 'he' ? 'נקודות' : 'points'}</p>
                     </div>
                   </div>

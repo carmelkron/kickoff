@@ -247,6 +247,18 @@ function mapNotification(row: NotificationRow, lang: Language): AppNotification 
     const wins = readNumber(row.data, 'wins');
     const rank = readNumber(row.data, 'rank');
     const points = readNumber(row.data, 'points');
+    const pointsText =
+      points >= 0
+        ? (
+            isHebrew
+              ? `קיבלתם ${points} נקודות`
+              : `you earned ${points} points`
+          )
+        : (
+            isHebrew
+              ? `הפסדתם ${Math.abs(points)} נקודות`
+              : `you lost ${Math.abs(points)} points`
+          );
     const colorLabel = getTeamColorLabel(teamColor, lang);
     const rankLabel =
       rank === Math.trunc(rank)
@@ -260,13 +272,13 @@ function mapNotification(row: NotificationRow, lang: Language): AppNotification 
       message: lobbyTitle
         ? (
           isHebrew
-            ? `${lobbyTitle}: הקבוצה ה${colorLabel} סיימה ב${rankLabel}, עם ${wins} ניצחונות, וקיבלתם ${points} נקודות.`
-            : `${lobbyTitle}: the ${colorLabel} team finished in ${rankLabel}, with ${wins} wins, and you earned ${points} points.`
+            ? `${lobbyTitle}: הקבוצה ה${colorLabel} סיימה ב${rankLabel}, עם ${wins} ניצחונות, ו${pointsText}.`
+            : `${lobbyTitle}: the ${colorLabel} team finished in ${rankLabel}, with ${wins} wins, and ${pointsText}.`
         )
         : (
           isHebrew
-            ? `תוצאות הלובי פורסמו. קיבלתם ${points} נקודות.`
-            : `The lobby result was published. You earned ${points} points.`
+            ? `תוצאות הלובי פורסמו. ${pointsText}.`
+            : `The lobby result was published. ${pointsText[0].toUpperCase()}${pointsText.slice(1)}.`
         ),
       isRead: row.is_read,
       createdAt: row.created_at,

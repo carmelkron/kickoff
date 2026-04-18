@@ -49,6 +49,24 @@ function formatRankLabel(rank: number, lang: 'he' | 'en') {
   return lang === 'he' ? `מקום ${roundedRank}` : `Place ${roundedRank}`;
 }
 
+function formatSignedPoints(points: number) {
+  return points > 0 ? `+${points}` : `${points}`;
+}
+
+function formatPointsSummary(points: number, maxPoints: number | undefined, lang: 'he' | 'en') {
+  if (maxPoints == null || maxPoints === points) {
+    return {
+      value: formatSignedPoints(points),
+      label: lang === 'he' ? 'נקודות לשחקן' : 'points per player',
+    };
+  }
+
+  return {
+    value: `${formatSignedPoints(points)} עד ${formatSignedPoints(maxPoints)}`,
+    label: lang === 'he' ? 'נקודות לשחקן לפי tier' : 'points per player by tier',
+  };
+}
+
 export default function LobbyDetailLive() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -266,6 +284,10 @@ export default function LobbyDetailLive() {
             color: assignment.team.color,
             teamNumber: assignment.team.teamNumber,
             wins: resultWins[assignment.team.id] ?? 0,
+            players: assignment.players.map((player) => ({
+              profileId: player.id,
+              competitivePoints: player.competitivePoints ?? 0,
+            })),
           })),
         )
       : [];
@@ -316,6 +338,10 @@ export default function LobbyDetailLive() {
   const myTeamResult =
     myTeamAssignment && lobbyResult
       ? lobbyResult.teamResults.find((teamResult) => teamResult.lobbyTeamId === myTeamAssignment.team.id) ?? null
+      : null;
+  const myAwardedPoints =
+    currentUser && myTeamResult
+      ? myTeamResult.playerAwardedPoints?.[currentUser.id] ?? myTeamResult.awardedPoints
       : null;
 
   async function runMembershipAction(action: () => Promise<void>) {
@@ -1298,7 +1324,7 @@ export default function LobbyDetailLive() {
                   </p>
                 </div>
                 <div className="text-end">
-                  <p className="text-lg font-bold text-primary-700">+{myTeamResult.awardedPoints}</p>
+                  <p className="text-lg font-bold text-primary-700">{formatSignedPoints(myAwardedPoints ?? myTeamResult.awardedPoints)}</p>
                   <p className="text-xs text-primary-600">{lang === 'he' ? 'נקודות שקיבלתם' : 'points earned'}</p>
                 </div>
               </div>
@@ -1329,8 +1355,8 @@ export default function LobbyDetailLive() {
                   </div>
                 </div>
                 <div className="text-end">
-                  <p className="text-sm font-semibold text-primary-700">+{teamResult.awardedPoints}</p>
-                  <p className="text-xs text-gray-500">{lang === 'he' ? 'נקודות לשחקן' : 'points per player'}</p>
+                  <p className="text-sm font-semibold text-primary-700">{formatPointsSummary(teamResult.awardedPoints, teamResult.awardedPointsMax, lang).value}</p>
+                  <p className="text-xs text-gray-500">{formatPointsSummary(teamResult.awardedPoints, teamResult.awardedPointsMax, lang).label}</p>
                 </div>
               </div>
             ))}
@@ -1490,8 +1516,8 @@ export default function LobbyDetailLive() {
                         </p>
                         {preview && (
                           <p className="text-xs text-gray-500">
-                            {formatRankLabel(preview.rank, lang)} • +{preview.awardedPoints}{' '}
-                            {lang === 'he' ? 'נקודות לשחקן' : 'points per player'}
+                            {formatRankLabel(preview.rank, lang)} • {formatPointsSummary(preview.awardedPoints, preview.awardedPointsMax, lang).value}{' '}
+                            {formatPointsSummary(preview.awardedPoints, preview.awardedPointsMax, lang).label}
                           </p>
                         )}
                       </div>

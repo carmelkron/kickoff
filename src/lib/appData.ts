@@ -1307,7 +1307,7 @@ export async function fetchLobbyResult(lobbyId: string): Promise<LobbyResultSumm
     return null;
   }
 
-  const [teamRowsResult, teamResultsResult, submittedByProfileResult] = await Promise.all([
+  const [teamRowsResult, teamResultsResult, submittedByProfileResult, pointEventsResult] = await Promise.all([
     supabase
       .from('lobby_teams')
       .select('id, lobby_id, color, team_number, locked_at')
@@ -1321,6 +1321,10 @@ export async function fetchLobbyResult(lobbyId: string): Promise<LobbyResultSumm
       .select('id, name')
       .eq('id', (resultRow as LobbyResultRow).submitted_by_profile_id)
       .maybeSingle(),
+    supabase
+      .from('competitive_point_events')
+      .select('profile_id, team_number, points')
+      .eq('lobby_id', lobbyId),
   ]);
 
   if (teamRowsResult.error) {
@@ -1333,26 +1337,48 @@ export async function fetchLobbyResult(lobbyId: string): Promise<LobbyResultSumm
   if (submittedByProfileResult.error) {
     throw submittedByProfileResult.error;
   }
+  if (pointEventsResult.error) {
+    throw pointEventsResult.error;
+  }
 
   const teamsById = new Map(((teamRowsResult.data ?? []) as LobbyTeamRow[]).map((row) => [row.id, row]));
-  const teamResults: LobbyTeamStanding[] = ((teamResultsResult.data ?? []) as LobbyTeamResultRow[])
+  const pointSummaryByTeamNumber = new Map<number, { min: number; max: number; byProfileId: Record<string, number> }>();
+
+  for (const row of (pointEventsResult.data ?? []) as Array<Pick<CompetitivePointEventRow, 'profile_id' | 'team_number' | 'points'>>) {
+    const current = pointSummaryByTeamNumber.get(row.team_number) ?? {
+      min: row.points,
+      max: row.points,
+      byProfileId: {},
+    };
+
+    current.min = Math.min(current.min, row.points);
+    current.max = Math.max(current.max, row.points);
+    current.byProfileId[row.profile_id] = row.points;
+    pointSummaryByTeamNumber.set(row.team_number, current);
+  }
+
+  const teamResults = ((teamResultsResult.data ?? []) as LobbyTeamResultRow[])
     .map((row) => {
       const team = teamsById.get(row.lobby_team_id);
       if (!team) {
-        return null;
+        return null as LobbyTeamStanding | null;
       }
+
+      const pointSummary = pointSummaryByTeamNumber.get(team.team_number);
 
       return {
         lobbyId: row.lobby_id,
         lobbyTeamId: row.lobby_team_id,
         wins: row.wins,
         rank: row.rank,
-        awardedPoints: row.awarded_points,
+        awardedPoints: pointSummary?.min ?? row.awarded_points,
+        awardedPointsMax: pointSummary?.max ?? row.awarded_points,
+        playerAwardedPoints: pointSummary?.byProfileId,
         teamColor: team.color,
         teamNumber: team.team_number,
-      };
+      } satisfies LobbyTeamStanding;
     })
-    .filter((row): row is LobbyTeamStanding => Boolean(row))
+    .filter((row): row is LobbyTeamStanding => row !== null)
     .sort((left, right) => left.teamNumber - right.teamNumber);
 
   const result = resultRow as LobbyResultRow;
@@ -1594,6 +1620,10 @@ export async function submitCompetitiveLobbyResult(
       color: assignment.team.color,
       teamNumber: assignment.team.teamNumber,
       wins: winsByTeamId[assignment.team.id] ?? 0,
+      players: assignment.players.map((player) => ({
+        profileId: player.id,
+        competitivePoints: player.competitivePoints ?? 0,
+      })),
     })),
   );
 
@@ -1631,17 +1661,24 @@ export async function submitCompetitiveLobbyResult(
       throw new Error('Failed to map standings to teams.');
     }
 
-    return assignment.players.map((player) => ({
-      lobby_id: lobbyId,
-      profile_id: player.id,
-      awarded_by_profile_id: submittedByProfileId,
-      team_color: standing.color,
-      team_number: standing.teamNumber,
-      wins: standing.wins,
-      rank: standing.rank,
-      points: standing.awardedPoints,
-      reason: 'competitive_lobby_result',
-    }));
+    return assignment.players.map((player) => {
+      const playerAward = standing.playerAwards.find((award) => award.profileId === player.id);
+      if (!playerAward) {
+        throw new Error('Failed to map player points to the submitted team.');
+      }
+
+      return {
+        lobby_id: lobbyId,
+        profile_id: player.id,
+        awarded_by_profile_id: submittedByProfileId,
+        team_color: standing.color,
+        team_number: standing.teamNumber,
+        wins: standing.wins,
+        rank: standing.rank,
+        points: playerAward.awardedPoints,
+        reason: 'competitive_lobby_result',
+      };
+    });
   });
   const resultNotifications = teamAssignments.flatMap((assignment) => {
     const standing = standingByTeamId.get(assignment.team.id);
@@ -1649,13 +1686,20 @@ export async function submitCompetitiveLobbyResult(
       throw new Error('Failed to map standings to teams.');
     }
 
-    return assignment.players.map((player) => ({
-      profileId: player.id,
-      teamColor: standing.color,
-      wins: standing.wins,
-      rank: standing.rank,
-      points: standing.awardedPoints,
-    }));
+    return assignment.players.map((player) => {
+      const playerAward = standing.playerAwards.find((award) => award.profileId === player.id);
+      if (!playerAward) {
+        throw new Error('Failed to map player points to the result notification.');
+      }
+
+      return {
+        profileId: player.id,
+        teamColor: standing.color,
+        wins: standing.wins,
+        rank: standing.rank,
+        points: playerAward.awardedPoints,
+      };
+    });
   });
 
   const { error: pointEventsError } = await supabase.from('competitive_point_events').insert(pointEvents);
@@ -1692,7 +1736,7 @@ export async function submitCompetitiveLobbyResult(
         const awardedPoints = pointsByProfileId.get(profileId) ?? 0;
         const { error: updatePointsError } = await supabase
           .from('profiles')
-          .update({ competitive_points: currentPoints + awardedPoints })
+          .update({ competitive_points: Math.max(0, currentPoints + awardedPoints) })
           .eq('id', profileId);
 
         if (updatePointsError) {
