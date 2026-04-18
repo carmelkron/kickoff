@@ -32,6 +32,7 @@ export default function EditLobbyPage() {
     time: '',
     numTeams: 2,
     playersPerTeam: 5,
+    minPointsPerGame: '',
     minAge: '',
     maxAge: '',
     price: '',
@@ -51,6 +52,7 @@ export default function EditLobbyPage() {
           time: `${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
           numTeams: nextLobby.numTeams ?? 2,
           playersPerTeam: nextLobby.playersPerTeam ?? 5,
+          minPointsPerGame: nextLobby.minPointsPerGame != null ? String(nextLobby.minPointsPerGame) : '',
           minAge: nextLobby.minAge != null ? String(nextLobby.minAge) : '',
           maxAge: nextLobby.maxAge != null ? String(nextLobby.maxAge) : '',
           price: nextLobby.price ? String(nextLobby.price) : '',
@@ -95,6 +97,7 @@ export default function EditLobbyPage() {
     setError('');
 
     const datetime = buildLobbyDateTime(form.date, form.time);
+    const minPointsPerGame = gameType === 'competitive' && form.minPointsPerGame ? Number(form.minPointsPerGame) : undefined;
     const minAge = form.minAge ? Number(form.minAge) : undefined;
     const maxAge = form.maxAge ? Number(form.maxAge) : undefined;
     if (!datetime) {
@@ -118,6 +121,7 @@ export default function EditLobbyPage() {
       numTeams: form.numTeams,
       playersPerTeam: form.playersPerTeam,
       accessType,
+      minPointsPerGame,
       minAge,
       maxAge,
       price: form.price ? Number(form.price) : undefined,
@@ -138,6 +142,7 @@ export default function EditLobbyPage() {
         datetime: datetime.toISOString(),
         numTeams: form.numTeams,
         playersPerTeam: form.playersPerTeam,
+        minPointsPerGame,
         minAge,
         maxAge,
         price: form.price ? Number(form.price) : undefined,
@@ -324,6 +329,27 @@ export default function EditLobbyPage() {
             </p>
           </div>
         </Card>
+
+        {gameType === 'competitive' && (
+          <Card>
+            <Field label={lang === 'he' ? 'מינימום נקודות למשחק להצטרפות (אופציונלי)' : 'Minimum points per game to join (optional)'}>
+              <Input
+                type="number"
+                min="0"
+                max="99.99"
+                step="0.1"
+                value={form.minPointsPerGame}
+                onChange={setField('minPointsPerGame')}
+                placeholder={lang === 'he' ? 'למשל 8.5' : 'e.g. 8.5'}
+              />
+            </Field>
+            <p className="text-xs text-gray-400">
+              {lang === 'he'
+                ? 'רק שחקנים שממוצע הנקודות התחרותיות שלהם למשחק עומד בסף הזה יוכלו להצטרף.'
+                : 'Only players whose average competitive points per game meets this bar will be able to join.'}
+            </p>
+          </Card>
+        )}
 
         <Card>
           <Field label={t.create.description}>

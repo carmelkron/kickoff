@@ -35,6 +35,8 @@ export interface Player {
   avatarColor: string;
   rating: number;        // 1–10
   competitivePoints?: number;
+  competitiveGamesPlayed?: number;
+  competitivePointsPerGame?: number;
   gamesPlayed: number;
   position?: string;
   bio?: string;
@@ -58,6 +60,7 @@ export interface Lobby {
   numTeams?: number;
   playersPerTeam?: number;
   minRating?: number;
+  minPointsPerGame?: number;
   minAge?: number;
   maxAge?: number;
   isPrivate: boolean;
@@ -152,6 +155,7 @@ export interface CompetitivePointEvent {
   teamNumber: number;
   wins: number;
   rank: number;
+  maxRank?: number;
   points: number;
   createdAt: string;
 }
@@ -166,6 +170,7 @@ export interface CompetitivePointHistoryEntry {
   teamNumber: number;
   wins: number;
   rank: number;
+  maxRank?: number;
   points: number;
   createdAt: string;
   notes?: string;
@@ -193,6 +198,8 @@ export interface AuthUser {
   ratingHistory: RatingEntry[];
   lobbyHistory: LobbyHistoryEntry[];
   competitivePoints?: number;
+  competitiveGamesPlayed?: number;
+  competitivePointsPerGame?: number;
   friends: string[];
   sentRequests: string[];
   pendingRequests: string[];

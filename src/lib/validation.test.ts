@@ -92,6 +92,7 @@ describe('validateCreateLobbyDraft', () => {
         numTeams: 2,
         playersPerTeam: 5,
         minRating: 4.5,
+        minPointsPerGame: 8.5,
         price: 30,
         description: 'Friendly game',
       },
@@ -163,6 +164,24 @@ describe('validateCreateLobbyDraft', () => {
 
     expect(errors).toContain('Minimum age cannot be greater than maximum age.');
   });
+
+  it('rejects invalid minimum points per game thresholds', () => {
+    const errors = validateCreateLobbyDraft(
+      {
+        title: 'Thursday Night',
+        address: '123 Gordon St',
+        city: 'Tel Aviv',
+        date: '2099-06-01',
+        time: '20:30',
+        numTeams: 2,
+        playersPerTeam: 5,
+        minPointsPerGame: 120,
+      },
+      new Date('2099-05-01T00:00:00.000Z'),
+    );
+
+    expect(errors).toContain('Minimum points per game must be between 0 and 99.99.');
+  });
 });
 
 describe('getJoinLobbyError', () => {
@@ -192,6 +211,13 @@ describe('getJoinLobbyError', () => {
     const lobby = makeLobby({ minAge: 18 });
 
     expect(getJoinLobbyError(lobby, player)).toBe('This lobby is for players aged 18 and up.');
+  });
+
+  it('blocks players below the required competitive points per game threshold', () => {
+    const player = makePlayer({ competitivePoints: 36, competitiveGamesPlayed: 6, competitivePointsPerGame: 6 });
+    const lobby = makeLobby({ minPointsPerGame: 7.5 });
+
+    expect(getJoinLobbyError(lobby, player)).toBe('This lobby requires at least 7.5 competitive points per game.');
   });
 });
 

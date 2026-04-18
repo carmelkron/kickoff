@@ -40,6 +40,7 @@ create table if not exists public.lobbies (
   num_teams integer,
   players_per_team integer,
   min_rating numeric(3, 1),
+  min_points_per_game numeric(5, 2),
   min_age integer,
   max_age integer,
   is_private boolean not null default false,
@@ -113,6 +114,8 @@ alter table public.lobbies drop constraint if exists lobbies_players_per_team_ra
 alter table public.lobbies add constraint lobbies_players_per_team_range_check check (players_per_team is null or players_per_team between 3 and 11);
 alter table public.lobbies drop constraint if exists lobbies_min_rating_range_check;
 alter table public.lobbies add constraint lobbies_min_rating_range_check check (min_rating is null or min_rating between 1.0 and 10.0);
+alter table public.lobbies drop constraint if exists lobbies_min_points_per_game_range_check;
+alter table public.lobbies add constraint lobbies_min_points_per_game_range_check check (min_points_per_game is null or min_points_per_game between 0 and 99.99);
 alter table public.lobbies drop constraint if exists lobbies_min_age_range_check;
 alter table public.lobbies add constraint lobbies_min_age_range_check check (min_age is null or min_age between 6 and 99);
 alter table public.lobbies drop constraint if exists lobbies_max_age_range_check;
@@ -506,6 +509,7 @@ alter table public.profiles add column if not exists home_longitude double preci
 alter table public.profiles add column if not exists home_address text;
 alter table public.lobbies add column if not exists field_type text check (field_type in ('grass', 'asphalt', 'indoor'));
 alter table public.lobbies add column if not exists access_type text not null default 'open';
+alter table public.lobbies add column if not exists min_points_per_game numeric(5, 2);
 alter table public.lobbies drop constraint if exists lobbies_access_type_check;
 alter table public.lobbies add constraint lobbies_access_type_check check (access_type in ('open', 'locked'));
 alter table public.lobbies add column if not exists gender_restriction text not null default 'none' check (gender_restriction in ('none', 'male', 'female'));

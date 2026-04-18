@@ -5,6 +5,7 @@ import {
   createFriendRequestResolutionNotification,
   markFriendRequestNotificationsHandled,
 } from '../lib/appNotifications';
+import { fetchCompetitiveProfileStats } from '../lib/appData';
 import { requireSupabase } from '../lib/supabase';
 import { uploadAvatar } from '../lib/storage';
 import { normalizeText, validateRegisterDraft } from '../lib/validation';
@@ -69,7 +70,17 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-function mapProfileToAuthUser(profile: ProfileRow, overrides?: Partial<AuthUser>): AuthUser {
+function mapProfileToAuthUser(
+  profile: ProfileRow,
+  competitiveGamesPlayed = 0,
+  overrides?: Partial<AuthUser>,
+): AuthUser {
+  const competitivePoints = profile.competitive_points ?? 0;
+  const competitivePointsPerGame =
+    competitiveGamesPlayed > 0
+      ? competitivePoints / competitiveGamesPlayed
+      : 0;
+
   return {
     id: profile.id,
     name: profile.name,
@@ -78,7 +89,9 @@ function mapProfileToAuthUser(profile: ProfileRow, overrides?: Partial<AuthUser>
     avatarColor: profile.avatar_color,
     rating: profile.rating,
     gamesPlayed: profile.games_played,
-    competitivePoints: profile.competitive_points ?? 0,
+    competitivePoints,
+    competitiveGamesPlayed,
+    competitivePointsPerGame,
     position: profile.position ?? undefined,
     bio: profile.bio ?? undefined,
     photoUrl: profile.photo_url ?? undefined,
@@ -218,7 +231,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const profiles = (profilesData ?? []) as ProfileRow[];
-    setAllUsers(profiles.map((profile) => mapProfileToAuthUser(profile)));
+    const competitiveStatsByProfileId = await fetchCompetitiveProfileStats(profiles.map((profile) => profile.id));
+    setAllUsers(
+      profiles.map((profile) =>
+        mapProfileToAuthUser(
+          profile,
+          competitiveStatsByProfileId.get(profile.id)?.competitiveGamesPlayed ?? 0,
+        ),
+      ),
+    );
 
     if (!authUserId) {
       setCurrentUser(null);
@@ -261,11 +282,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .map((request) => request.from_profile_id);
 
     setCurrentUser(
-      mapProfileToAuthUser(currentProfile, {
-        friends,
-        sentRequests,
-        pendingRequests,
-      }),
+      mapProfileToAuthUser(
+        currentProfile,
+        competitiveStatsByProfileId.get(currentProfile.id)?.competitiveGamesPlayed ?? 0,
+        {
+          friends,
+          sentRequests,
+          pendingRequests,
+        },
+      ),
     );
   }
 

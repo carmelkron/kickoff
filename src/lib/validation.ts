@@ -25,6 +25,7 @@ export type CreateLobbyDraft = {
   playersPerTeam: number;
   accessType?: 'open' | 'locked';
   minRating?: number;
+  minPointsPerGame?: number;
   minAge?: number;
   maxAge?: number;
   price?: number;
@@ -40,6 +41,7 @@ export type CreateLobbyPayload = {
   playersPerTeam: number;
   accessType?: 'open' | 'locked';
   minRating?: number;
+  minPointsPerGame?: number;
   minAge?: number;
   maxAge?: number;
   price?: number;
@@ -154,6 +156,10 @@ export function validateCreateLobbyDraft(input: CreateLobbyDraft, now = new Date
     errors.push('Minimum age must be between 6 and 99.');
   }
 
+  if (typeof input.minPointsPerGame === 'number' && (!Number.isFinite(input.minPointsPerGame) || input.minPointsPerGame < 0 || input.minPointsPerGame > 99.99)) {
+    errors.push('Minimum points per game must be between 0 and 99.99.');
+  }
+
   if (typeof input.maxAge === 'number' && (!Number.isInteger(input.maxAge) || input.maxAge < 6 || input.maxAge > 99)) {
     errors.push('Maximum age must be between 6 and 99.');
   }
@@ -220,6 +226,10 @@ export function validateCreateLobbyPayload(input: CreateLobbyPayload, now = new 
     errors.push('Minimum age must be between 6 and 99.');
   }
 
+  if (typeof input.minPointsPerGame === 'number' && (!Number.isFinite(input.minPointsPerGame) || input.minPointsPerGame < 0 || input.minPointsPerGame > 99.99)) {
+    errors.push('Minimum points per game must be between 0 and 99.99.');
+  }
+
   if (typeof input.maxAge === 'number' && (!Number.isInteger(input.maxAge) || input.maxAge < 6 || input.maxAge > 99)) {
     errors.push('Maximum age must be between 6 and 99.');
   }
@@ -276,6 +286,13 @@ export function getJoinLobbyError(
 
     if (lobby.maxAge != null && age > lobby.maxAge) {
       return `This lobby is for players up to age ${lobby.maxAge}.`;
+    }
+  }
+
+  if (lobby.gameType === 'competitive' && lobby.minPointsPerGame != null) {
+    const pointsPerGame = player.competitivePointsPerGame ?? 0;
+    if (pointsPerGame < lobby.minPointsPerGame) {
+      return `This lobby requires at least ${lobby.minPointsPerGame.toFixed(1)} competitive points per game.`;
     }
   }
 

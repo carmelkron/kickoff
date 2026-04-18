@@ -177,6 +177,17 @@ export default function ProfileLive() {
   const hasCompetitiveHistory = loadingCompetitiveHistory || competitiveHistory.length > 0 || competitivePointsTotal > 0;
   const hasLobbyHistory = loadingLobbyHistory || lobbyHistory.length > 0;
   const latestCompetitiveGain = competitiveHistory[0]?.points ?? null;
+  const competitiveGamesPlayed = profile?.competitiveGamesPlayed ?? competitiveHistory.length;
+  const competitivePointsPerGame = profile?.competitivePointsPerGame ?? (
+    competitiveGamesPlayed > 0
+      ? competitivePointsTotal / competitiveGamesPlayed
+      : 0
+  );
+  const competitiveWins = competitiveHistory.filter((entry) => entry.rank === 1).length;
+  const competitiveLosses = competitiveHistory.filter((entry) => {
+    const maxRank = entry.maxRank ?? (entry.rank > 1 ? entry.rank : undefined);
+    return maxRank != null && entry.rank === maxRank;
+  }).length;
 
   const historyTabs = [
     hasCompetitiveHistory
@@ -360,9 +371,16 @@ export default function ProfileLive() {
 
         {actionError && <p className="text-red-500 text-sm mt-4">{actionError}</p>}
 
-        <div className="grid grid-cols-2 gap-4 mt-5 border-t border-gray-100 pt-5 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 mt-5 border-t border-gray-100 pt-5 sm:grid-cols-3 lg:grid-cols-6">
           <StatBox value={profile.gamesPlayed} label={lang === 'he' ? 'משחקים' : 'Games'} />
           <StatBox value={competitivePointsTotal} label={lang === 'he' ? 'נק׳ תחרות' : 'Comp. points'} color="text-primary-700" />
+          <StatBox
+            value={competitiveGamesPlayed > 0 ? competitivePointsPerGame.toFixed(1) : '—'}
+            label={lang === 'he' ? 'נק׳ למשחק' : 'Pts / game'}
+            color={competitiveGamesPlayed > 0 ? 'text-primary-700' : 'text-gray-400'}
+          />
+          <StatBox value={competitiveWins} label={lang === 'he' ? 'ניצחונות' : 'Wins'} color="text-green-600" />
+          <StatBox value={competitiveLosses} label={lang === 'he' ? 'הפסדים' : 'Losses'} color="text-red-600" />
           <StatBox
             value={
               latestCompetitiveGain != null
@@ -411,8 +429,8 @@ export default function ProfileLive() {
               </h2>
               <p className="mt-1 text-xs text-gray-500">
                 {lang === 'he'
-                  ? `סה״כ ${competitivePointsTotal} נקודות תחרות`
-                  : `${competitivePointsTotal} total competitive points`}
+                  ? `${competitivePointsTotal} נק׳ תחרות • ${competitiveWins} ניצחונות • ${competitiveLosses} הפסדים • ${competitiveGamesPlayed > 0 ? competitivePointsPerGame.toFixed(1) : '0.0'} נק׳ למשחק`
+                  : `${competitivePointsTotal} competitive points • ${competitiveWins} wins • ${competitiveLosses} losses • ${competitiveGamesPlayed > 0 ? competitivePointsPerGame.toFixed(1) : '0.0'} pts/game`}
               </p>
             </div>
             <div className="rounded-2xl bg-primary-50 px-3 py-2 text-center">

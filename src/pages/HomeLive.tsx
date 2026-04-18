@@ -7,7 +7,7 @@ import LobbyCard from '../components/LobbyCard';
 import { fetchLobbies } from '../lib/appData';
 import { Coords, HOME_FILTERS_SESSION_KEY, LocationMode, getDistanceSourceText } from '../utils/distanceSource';
 import { haversineKm } from '../utils/geo';
-import type { FieldType, GenderRestriction, GameType, Lobby, Player } from '../types';
+import type { FieldType, GenderRestriction, GameType, Lobby } from '../types';
 
 type Tab = 'all' | 'friends';
 type RadiusOption = 5 | 10 | 20 | 50 | 999;
@@ -20,8 +20,16 @@ const RADIUS_OPTIONS: { value: RadiusOption; label: string; labelEn: string }[] 
   { value: 999, label: 'הכל', labelEn: 'Any' },
 ];
 
-function competitivePoints(player: Player) {
-  return player.competitivePoints ?? 0;
+function avgCompetitivePoints(lobby: Lobby) {
+  if (lobby.players.length === 0) {
+    return null;
+  }
+
+  return lobby.players.reduce((sum, player) => sum + (player.competitivePoints ?? 0), 0) / lobby.players.length;
+}
+
+function competitivePoints(points: number | undefined) {
+  return points ?? 0;
 }
 
 // --- Session storage helpers ---
@@ -32,6 +40,7 @@ type FilterState = {
   filterFieldType: FieldType | 'all';
   filterNumTeams: number | 'all';
   filterGender: GenderRestriction | 'all';
+  minAvgCompetitivePoints: string;
   minRating: number;
   canJoinOnly: boolean;
   radiusKm: RadiusOption;
@@ -41,19 +50,14 @@ type FilterState = {
 };
 
 function loadFilters(): FilterState {
-  try {
-    const raw = sessionStorage.getItem(HOME_FILTERS_SESSION_KEY);
-    if (raw) return JSON.parse(raw) as FilterState;
-  } catch {
-    // ignore
-  }
-  return {
+  const defaults: FilterState = {
     gameSearch: '',
     showFilters: false,
     gameTypeFilter: 'all',
     filterFieldType: 'all',
     filterNumTeams: 'all',
     filterGender: 'all',
+    minAvgCompetitivePoints: '',
     minRating: 1,
     canJoinOnly: false,
     radiusKm: 999,
@@ -61,6 +65,25 @@ function loadFilters(): FilterState {
     locationMode: 'home',
     currentCoords: null,
   };
+
+  try {
+    const raw = sessionStorage.getItem(HOME_FILTERS_SESSION_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<FilterState>;
+      return {
+        ...defaults,
+        ...parsed,
+        minAvgCompetitivePoints:
+          typeof parsed.minAvgCompetitivePoints === 'string'
+            ? parsed.minAvgCompetitivePoints
+            : '',
+      };
+    }
+  } catch {
+    // ignore
+  }
+
+  return defaults;
 }
 
 function saveFilters(state: FilterState) {
@@ -85,7 +108,7 @@ export default function HomeLive() {
 
   const {
     gameSearch, showFilters, gameTypeFilter, filterFieldType,
-    filterNumTeams, filterGender, radiusKm, tab, locationMode, currentCoords,
+    filterNumTeams, filterGender, minAvgCompetitivePoints, radiusKm, tab, locationMode, currentCoords,
   } = filters;
 
   function setFilter<K extends keyof FilterState>(key: K, value: FilterState[K]) {
@@ -103,6 +126,7 @@ export default function HomeLive() {
       filterFieldType: 'all',
       filterNumTeams: 'all',
       filterGender: 'all',
+      minAvgCompetitivePoints: '',
       minRating: 1,
       canJoinOnly: false,
       radiusKm: 999,
@@ -235,6 +259,7 @@ export default function HomeLive() {
     filterFieldType !== 'all',
     filterNumTeams !== 'all',
     filterGender !== 'all',
+    minAvgCompetitivePoints.trim().length > 0,
     radiusKm !== 999,
   ].filter(Boolean).length;
   const activeDistanceMode = hasActiveCurrentLocation ? 'current' : 'home';
@@ -242,6 +267,8 @@ export default function HomeLive() {
   const distanceSourceSummary = getDistanceSourceText(activeDistanceMode, lang, 'full');
 
   const allFiltered = futureLobbies.filter((lobby) => {
+    const minAvgCompetitivePointsValue = minAvgCompetitivePoints ? Number(minAvgCompetitivePoints) : null;
+
     if (gameSearch.trim()) {
       const q = gameSearch.trim().toLowerCase();
       if (!`${lobby.title} ${lobby.city} ${lobby.address}`.toLowerCase().includes(q)) return false;
@@ -250,6 +277,10 @@ export default function HomeLive() {
     if (filterFieldType !== 'all' && lobby.fieldType !== filterFieldType) return false;
     if (filterNumTeams !== 'all' && lobby.numTeams !== filterNumTeams) return false;
     if (filterGender !== 'all' && lobby.genderRestriction !== filterGender) return false;
+    if (minAvgCompetitivePointsValue != null && !Number.isNaN(minAvgCompetitivePointsValue)) {
+      const lobbyAverageCompetitivePoints = avgCompetitivePoints(lobby);
+      if (lobbyAverageCompetitivePoints == null || lobbyAverageCompetitivePoints < minAvgCompetitivePointsValue) return false;
+    }
     if (radiusKm !== 999 && refPoint && lobby.latitude != null && lobby.longitude != null) {
       const dist = haversineKm(refPoint.lat, refPoint.lng, lobby.latitude, lobby.longitude);
       if (dist > radiusKm) return false;
@@ -347,7 +378,7 @@ export default function HomeLive() {
                       {user.position && <p className="text-xs text-gray-400">{user.position}</p>}
                     </div>
                     <div className="shrink-0 text-end">
-                      <p className="text-xs font-semibold text-primary-700">🏆 {competitivePoints(user)}</p>
+                      <p className="text-xs font-semibold text-primary-700">🏆 {competitivePoints(user.competitivePoints)}</p>
                       {isFriend && <span className="text-xs text-green-600">{lang === 'he' ? 'חבר ✓' : 'Friend ✓'}</span>}
                       {sentRequest && !isFriend && <span className="text-xs text-gray-400">{lang === 'he' ? 'נשלחה' : 'Sent'}</span>}
                     </div>
@@ -483,6 +514,24 @@ export default function HomeLive() {
                 <FilterChip key={val} active={filterGender === val} onClick={() => setFilter('filterGender', val)}>{label}</FilterChip>
               ))}
             </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1.5">{lang === 'he' ? 'ממוצע נק׳ תחרות של השחקנים בפנים' : 'Average competitive points of players inside'}</p>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={minAvgCompetitivePoints}
+              onChange={(event) => setFilter('minAvgCompetitivePoints', event.target.value)}
+              placeholder={lang === 'he' ? 'למשל 120' : 'e.g. 120'}
+              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-300"
+            />
+            <p className="mt-1.5 text-[11px] text-gray-400">
+              {lang === 'he'
+                ? 'מסתיר לוביז שהממוצע התחרותי של השחקנים שכבר הצטרפו נמוך מהסף.'
+                : 'Hide lobbies whose joined players average below this competitive threshold.'}
+            </p>
           </div>
 
         </div>

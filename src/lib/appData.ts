@@ -27,7 +27,7 @@ import { buildBalancedLobbyTeams } from './teamAssignment';
 import { buildWaitlistSyncPlan } from './waitlist';
 
 const PROFILE_SELECT_FIELDS = 'id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, birthdate, rating_history, lobby_history';
-const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, min_age, max_age, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, gender_restriction, latitude, longitude';
+const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, min_points_per_game, min_age, max_age, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, gender_restriction, latitude, longitude';
 const LOBBY_SELECT_FIELDS_WITH_STATUS = `${LOBBY_SELECT_FIELDS}, status`;
 
 function toAppError(error: unknown, fallbackMessage: string) {
@@ -147,6 +147,7 @@ type LobbyRow = {
   num_teams: number | null;
   players_per_team: number | null;
   min_rating: number | null;
+  min_points_per_game: number | null;
   min_age: number | null;
   max_age: number | null;
   is_private: boolean;
@@ -208,6 +209,7 @@ type CompetitivePointEventRow = {
   team_number: number;
   wins: number;
   rank: number;
+  max_rank?: number;
   points: number;
   created_at: string;
 };
@@ -251,6 +253,11 @@ type LobbyResultReminderLobbyRow = {
   created_by: string;
   game_type: GameType;
   status?: 'active' | 'deleted' | 'expired' | null;
+};
+
+type CompetitiveProfileStats = {
+  competitiveGamesPlayed: number;
+  competitivePointsPerGame: number;
 };
 
 function resolveLobbyStatus(row: LobbyRow): LobbyStatus {
@@ -404,7 +411,14 @@ async function syncLobbyWaitlistState(lobbyId: string, actorProfileId: string) {
   return nextLobby;
 }
 
-function mapProfile(row: ProfileRow): Player {
+function mapProfile(row: ProfileRow, stats?: CompetitiveProfileStats): Player {
+  const competitivePoints = row.competitive_points ?? 0;
+  const competitiveGamesPlayed = stats?.competitiveGamesPlayed ?? 0;
+  const competitivePointsPerGame =
+    competitiveGamesPlayed > 0
+      ? competitivePoints / competitiveGamesPlayed
+      : 0;
+
   return {
     id: row.id,
     name: row.name,
@@ -418,10 +432,48 @@ function mapProfile(row: ProfileRow): Player {
     photoUrl: row.photo_url ?? undefined,
     gender: row.gender ?? undefined,
     birthdate: row.birthdate ?? undefined,
-    competitivePoints: row.competitive_points ?? 0,
+    competitivePoints,
+    competitiveGamesPlayed,
+    competitivePointsPerGame,
     ratingHistory: row.rating_history ?? [],
     lobbyHistory: row.lobby_history ?? [],
   };
+}
+
+export async function fetchCompetitiveProfileStats(profileIds: string[]): Promise<Map<string, CompetitiveProfileStats>> {
+  const uniqueProfileIds = [...new Set(profileIds.filter(Boolean))];
+  if (uniqueProfileIds.length === 0) {
+    return new Map();
+  }
+
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from('competitive_point_events')
+    .select('profile_id')
+    .in('profile_id', uniqueProfileIds);
+
+  if (error) {
+    throw error;
+  }
+
+  const competitiveGamesByProfileId = new Map<string, number>();
+
+  for (const row of (data ?? []) as Array<{ profile_id: string }>) {
+    competitiveGamesByProfileId.set(row.profile_id, (competitiveGamesByProfileId.get(row.profile_id) ?? 0) + 1);
+  }
+
+  return new Map(
+    uniqueProfileIds.map((profileId) => {
+      const competitiveGamesPlayed = competitiveGamesByProfileId.get(profileId) ?? 0;
+      return [
+        profileId,
+        {
+          competitiveGamesPlayed,
+          competitivePointsPerGame: 0,
+        },
+      ] satisfies [string, CompetitiveProfileStats];
+    }),
+  );
 }
 
 export async function fetchProfiles(): Promise<Player[]> {
@@ -435,7 +487,9 @@ export async function fetchProfiles(): Promise<Player[]> {
     throw error;
   }
 
-  return ((data ?? []) as ProfileRow[]).map(mapProfile);
+  const profiles = (data ?? []) as ProfileRow[];
+  const competitiveStatsByProfileId = await fetchCompetitiveProfileStats(profiles.map((profile) => profile.id));
+  return profiles.map((profile) => mapProfile(profile, competitiveStatsByProfileId.get(profile.id)));
 }
 
 export async function fetchProfileById(id: string): Promise<Player | null> {
@@ -450,7 +504,12 @@ export async function fetchProfileById(id: string): Promise<Player | null> {
     throw error;
   }
 
-  return data ? mapProfile(data as ProfileRow) : null;
+  if (!data) {
+    return null;
+  }
+
+  const competitiveStatsByProfileId = await fetchCompetitiveProfileStats([id]);
+  return mapProfile(data as ProfileRow, competitiveStatsByProfileId.get(id));
 }
 
 export async function fetchProfileLobbyHistory(profileId: string): Promise<LobbyHistoryEntry[]> {
@@ -601,7 +660,11 @@ export async function fetchLobbies(): Promise<Lobby[]> {
     throw joinRequestRows.error;
   }
 
-  const playersById = new Map<string, Player>(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
+  const profiles = (profileRows ?? []) as ProfileRow[];
+  const competitiveStatsByProfileId = await fetchCompetitiveProfileStats(profiles.map((profile) => profile.id));
+  const playersById = new Map<string, Player>(
+    profiles.map((profile) => [profile.id, mapProfile(profile, competitiveStatsByProfileId.get(profile.id))]),
+  );
   const membershipsByLobby = new Map<string, MembershipRow[]>();
   const organizerIdsByLobby = new Map<string, string[]>();
   const viewerInviteStatusByLobbyId = new Map<string, LobbyInviteStatus>(
@@ -676,6 +739,7 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       numTeams: row.num_teams ?? undefined,
       playersPerTeam: row.players_per_team ?? undefined,
       minRating: row.min_rating ?? undefined,
+      minPointsPerGame: row.min_points_per_game ?? undefined,
       minAge: row.min_age ?? undefined,
       maxAge: row.max_age ?? undefined,
       isPrivate: row.is_private,
@@ -780,7 +844,11 @@ export async function fetchLobbyInvites(lobbyId: string): Promise<LobbyInvite[]>
     throw profilesError;
   }
 
-  const playersById = new Map(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
+  const profiles = (profileRows ?? []) as ProfileRow[];
+  const competitiveStatsByProfileId = await fetchCompetitiveProfileStats(profiles.map((profile) => profile.id));
+  const playersById = new Map(
+    profiles.map((profile) => [profile.id, mapProfile(profile, competitiveStatsByProfileId.get(profile.id))]),
+  );
 
   return invites
     .map((invite) => {
@@ -832,7 +900,11 @@ export async function fetchLobbyJoinRequests(lobbyId: string): Promise<LobbyJoin
     throw profilesError;
   }
 
-  const playersById = new Map(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
+  const profiles = (profileRows ?? []) as ProfileRow[];
+  const competitiveStatsByProfileId = await fetchCompetitiveProfileStats(profiles.map((profile) => profile.id));
+  const playersById = new Map(
+    profiles.map((profile) => [profile.id, mapProfile(profile, competitiveStatsByProfileId.get(profile.id))]),
+  );
 
   return requests
     .map((request) => {
@@ -959,7 +1031,11 @@ export async function fetchLobbyMessages(lobbyId: string): Promise<LobbyMessage[
     throw profilesError;
   }
 
-  const playersById = new Map(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
+  const profiles = (profileRows ?? []) as ProfileRow[];
+  const competitiveStatsByProfileId = await fetchCompetitiveProfileStats(profiles.map((profile) => profile.id));
+  const playersById = new Map(
+    profiles.map((profile) => [profile.id, mapProfile(profile, competitiveStatsByProfileId.get(profile.id))]),
+  );
 
   return messages
     .map((message) => {
@@ -1078,7 +1154,11 @@ export async function fetchLobbyTeams(lobbyId: string): Promise<LobbyTeamAssignm
     throw profilesError;
   }
 
-  const playersById = new Map(((profileRows ?? []) as ProfileRow[]).map((row) => [row.id, mapProfile(row)]));
+  const profiles = (profileRows ?? []) as ProfileRow[];
+  const competitiveStatsByProfileId = await fetchCompetitiveProfileStats(profiles.map((profile) => profile.id));
+  const playersById = new Map(
+    profiles.map((profile) => [profile.id, mapProfile(profile, competitiveStatsByProfileId.get(profile.id))]),
+  );
   const membersByTeamId = new Map<string, Player[]>();
 
   for (const row of (memberRows ?? []) as LobbyTeamMemberRow[]) {
@@ -1529,7 +1609,11 @@ export async function fetchCompetitivePointHistory(profileId: string): Promise<C
   }
 
   const lobbyIds = [...new Set(events.map((event) => event.lobby_id))];
-  const [{ data: lobbyRows, error: lobbiesError }, { data: resultRows, error: resultsError }] = await Promise.all([
+  const [
+    { data: lobbyRows, error: lobbiesError },
+    { data: resultRows, error: resultsError },
+    { data: teamResultRows, error: teamResultsError },
+  ] = await Promise.all([
     supabase
       .from('lobbies')
       .select('id, title, city, datetime')
@@ -1537,6 +1621,10 @@ export async function fetchCompetitivePointHistory(profileId: string): Promise<C
     supabase
       .from('lobby_results')
       .select('lobby_id, notes')
+      .in('lobby_id', lobbyIds),
+    supabase
+      .from('lobby_team_results')
+      .select('lobby_id, rank')
       .in('lobby_id', lobbyIds),
   ]);
 
@@ -1547,6 +1635,9 @@ export async function fetchCompetitivePointHistory(profileId: string): Promise<C
   if (resultsError) {
     throw resultsError;
   }
+  if (teamResultsError) {
+    throw teamResultsError;
+  }
 
   const lobbyById = new Map(
     ((lobbyRows ?? []) as Array<{ id: string; title: string; city: string; datetime: string }>).map((row) => [row.id, row]),
@@ -1554,6 +1645,11 @@ export async function fetchCompetitivePointHistory(profileId: string): Promise<C
   const resultByLobbyId = new Map(
     ((resultRows ?? []) as LobbyResultRow[]).map((row) => [row.lobby_id, row]),
   );
+  const maxRankByLobbyId = new Map<string, number>();
+
+  for (const row of (teamResultRows ?? []) as Array<{ lobby_id: string; rank: number }>) {
+    maxRankByLobbyId.set(row.lobby_id, Math.max(maxRankByLobbyId.get(row.lobby_id) ?? 0, row.rank));
+  }
 
   return events.map((event) => {
     const lobby = lobbyById.get(event.lobby_id);
@@ -1569,6 +1665,7 @@ export async function fetchCompetitivePointHistory(profileId: string): Promise<C
       teamNumber: event.team_number,
       wins: event.wins,
       rank: event.rank,
+      maxRank: maxRankByLobbyId.get(event.lobby_id) || undefined,
       points: event.points,
       createdAt: event.created_at,
       notes: result?.notes ?? undefined,
@@ -1765,6 +1862,7 @@ export type CreateLobbyInput = {
   numTeams?: number;
   playersPerTeam?: number;
   minRating?: number;
+  minPointsPerGame?: number;
   minAge?: number;
   maxAge?: number;
   price?: number;
@@ -1788,6 +1886,7 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     playersPerTeam: input.playersPerTeam ?? 0,
     accessType: input.accessType,
     minRating: input.gameType === 'competitive' ? input.minRating : undefined,
+    minPointsPerGame: input.gameType === 'competitive' ? input.minPointsPerGame : undefined,
     minAge: input.minAge,
     maxAge: input.maxAge,
     price: input.price,
@@ -1811,6 +1910,7 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     num_teams: input.numTeams ?? null,
     players_per_team: input.playersPerTeam ?? null,
     min_rating: input.gameType === 'competitive' ? (input.minRating ?? null) : null,
+    min_points_per_game: input.gameType === 'competitive' ? (input.minPointsPerGame ?? null) : null,
     min_age: input.minAge ?? null,
     max_age: input.maxAge ?? null,
     is_private: false,
@@ -1840,6 +1940,7 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
       num_teams: lobbyPayload.num_teams,
       players_per_team: lobbyPayload.players_per_team,
       min_rating: lobbyPayload.min_rating,
+      min_points_per_game: lobbyPayload.min_points_per_game,
       min_age: lobbyPayload.min_age,
       max_age: lobbyPayload.max_age,
       is_private: lobbyPayload.is_private,
@@ -2267,6 +2368,7 @@ export type UpdateLobbyInput = {
   numTeams?: number;
   playersPerTeam?: number;
   minRating?: number;
+  minPointsPerGame?: number;
   minAge?: number;
   maxAge?: number;
   price?: number;
@@ -2292,6 +2394,7 @@ export async function updateLobby(input: UpdateLobbyInput) {
       players_per_team: input.playersPerTeam ?? null,
       max_players: (input.numTeams ?? 2) * (input.playersPerTeam ?? 5),
       min_rating: input.gameType === 'competitive' ? (input.minRating ?? null) : null,
+      min_points_per_game: input.gameType === 'competitive' ? (input.minPointsPerGame ?? null) : null,
       min_age: input.minAge ?? null,
       max_age: input.maxAge ?? null,
       price: input.price ?? null,

@@ -116,6 +116,13 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
             {lang === 'he' ? `מינימום: ${Math.round(lobby.minRating)} נק׳` : `Min: ${Math.round(lobby.minRating)} pts`}
           </div>
         )}
+        {lobby.minPointsPerGame != null && lobby.gameType === 'competitive' && (
+          <div className="text-xs text-gray-400">
+            {lang === 'he'
+              ? `מינימום ממוצע: ${lobby.minPointsPerGame.toFixed(1)} נק׳ למשחק`
+              : `Min avg: ${lobby.minPointsPerGame.toFixed(1)} pts/game`}
+          </div>
+        )}
       </div>
 
       {/* Footer */}

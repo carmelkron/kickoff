@@ -1138,6 +1138,15 @@ export default function LobbyDetailLive() {
             </span>
           </div>
         )}
+        {lobby.minPointsPerGame != null && isCompetitive && (
+          <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+            <span className="text-gray-400">{lang === 'he' ? 'מינימום נק׳ למשחק:' : 'Min points per game:'}</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
+              <Trophy size={11} />
+              {lobby.minPointsPerGame.toFixed(1)}
+            </span>
+          </div>
+        )}
         <div className="mt-2 flex flex-wrap gap-2">
           {lobby.fieldType && (
             <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
