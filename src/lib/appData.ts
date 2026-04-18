@@ -1,12 +1,9 @@
 import type { Lobby, Player, ProfileSkill, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry, LobbyAccessType, LobbyInvite, LobbyInviteStatus, LobbyJoinRequest, LobbyJoinRequestStatus, LobbyMessage } from '../types';
 import {
   createCompetitiveResultNotifications,
-  createFriendJoinedLobbyNotifications,
   createLobbyInviteNotification,
   createLobbyJoinRequestNotification,
   createLobbyJoinRequestResolutionNotification,
-  createOrganizerSummaryNotification,
-  createTeamAssignedNotifications,
   createWaitlistSpotOpenedNotifications,
   fetchAcceptedFriendIds,
   markLobbyJoinRequestNotificationsHandled,
@@ -1463,17 +1460,6 @@ export async function generateLobbyTeams(lobbyId: string, actorProfileId: string
     throw insertMembersError;
   }
 
-  await createTeamAssignedNotifications(
-    actorProfileId,
-    lobby,
-    generatedTeams.flatMap((team) =>
-      team.players.map((player) => ({
-        profileId: player.id,
-        teamColor: team.color,
-      })),
-    ),
-  );
-
   return fetchLobbyTeams(lobbyId);
 }
 
@@ -1562,17 +1548,6 @@ export async function swapLobbyTeamPlayers(
 
   if (updateSecondError) {
     throw updateSecondError;
-  }
-
-  const teamsById = new Map(teams.map((team) => [team.id, team]));
-  const firstTargetTeam = teamsById.get(secondMember.lobby_team_id);
-  const secondTargetTeam = teamsById.get(firstMember.lobby_team_id);
-
-  if (firstTargetTeam && secondTargetTeam) {
-    await createTeamAssignedNotifications(actorProfileId, lobby, [
-      { profileId: firstProfileId, teamColor: firstTargetTeam.color },
-      { profileId: secondProfileId, teamColor: secondTargetTeam.color },
-    ]);
   }
 
   return fetchLobbyTeams(lobbyId);
@@ -2178,15 +2153,6 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     throw toAppError(membershipError, 'Failed to join the game after creating it.');
   }
 
-  try {
-    const createdLobby = await fetchLobbyById(id);
-    if (createdLobby) {
-      await createOrganizerSummaryNotification(input.createdBy, createdLobby);
-    }
-  } catch {
-    // A lobby that was already inserted should still be considered published.
-  }
-
   return id;
 }
 
@@ -2197,15 +2163,11 @@ export async function upsertLobbyMembership(
   options?: { shareToken?: string | null },
 ) {
   const supabase = requireSupabase();
-  let resolvedProfile: Player | null = null;
-  let wasJoinedBefore = false;
   let shouldMarkInviteAccepted = false;
 
   if (status === 'joined' || status === 'waitlisted') {
     const [lobby, profile] = await Promise.all([fetchLobbyById(lobbyId), fetchProfileById(profileId)]);
     const resolvedLobby = lobby;
-    resolvedProfile = profile;
-    wasJoinedBefore = resolvedLobby ? resolvedLobby.players.some((player) => player.id === profileId) : false;
     const joinError =
       resolvedLobby && profile
         ? getJoinLobbyError(resolvedLobby, profile, { allowExistingWaitlist: status === 'joined' })
@@ -2280,17 +2242,7 @@ export async function upsertLobbyMembership(
     await markWaitlistSpotNotificationsHandled(profileId, lobbyId);
   }
 
-  const nextLobby = await syncLobbyWaitlistState(lobbyId, profileId) ?? await fetchLobbyById(lobbyId);
-  if (!nextLobby) {
-    return;
-  }
-
-  if (status === 'joined' && !wasJoinedBefore && resolvedProfile) {
-    const friendIds = await fetchAcceptedFriendIds(profileId);
-    await createFriendJoinedLobbyNotifications(profileId, resolvedProfile.name, friendIds, nextLobby);
-  }
-
-  await createOrganizerSummaryNotification(profileId, nextLobby);
+  await syncLobbyWaitlistState(lobbyId, profileId);
 }
 
 export async function passLobbyWaitlistSpot(lobbyId: string, profileId: string) {
@@ -2306,12 +2258,7 @@ export async function passLobbyWaitlistSpot(lobbyId: string, profileId: string) 
   await updateMembershipStatus(lobbyId, profileId, 'waitlisted_passed');
   await markWaitlistSpotNotificationsHandled(profileId, lobbyId);
 
-  const nextLobby = await syncLobbyWaitlistState(lobbyId, profileId) ?? await fetchLobbyById(lobbyId);
-  if (!nextLobby) {
-    return;
-  }
-
-  await createOrganizerSummaryNotification(profileId, nextLobby);
+  await syncLobbyWaitlistState(lobbyId, profileId);
 }
 
 export async function createLobbyInvite(lobbyId: string, invitedByProfileId: string, invitedProfileId: string) {
@@ -2366,39 +2313,6 @@ export async function createLobbyInvite(lobbyId: string, invitedByProfileId: str
   }
 
   await createLobbyInviteNotification(invitedByProfileId, inviter.name, invitedProfileId, lobby);
-}
-
-export type ReinviteLobbyParticipantsSummary = {
-  requestedCount: number;
-  invitedCount: number;
-  skippedCount: number;
-};
-
-export async function reinviteLobbyParticipants(
-  lobbyId: string,
-  invitedByProfileId: string,
-  invitedProfileIds: string[],
-): Promise<ReinviteLobbyParticipantsSummary> {
-  const uniqueProfileIds = [...new Set(
-    invitedProfileIds.filter((profileId) => profileId && profileId !== invitedByProfileId),
-  )];
-  let invitedCount = 0;
-  let skippedCount = 0;
-
-  for (const invitedProfileId of uniqueProfileIds) {
-    try {
-      await createLobbyInvite(lobbyId, invitedByProfileId, invitedProfileId);
-      invitedCount += 1;
-    } catch {
-      skippedCount += 1;
-    }
-  }
-
-  return {
-    requestedCount: uniqueProfileIds.length,
-    invitedCount,
-    skippedCount,
-  };
 }
 
 export async function requestLobbyAccess(lobbyId: string, requesterProfileId: string) {
@@ -2507,10 +2421,7 @@ export async function approveLobbyJoinRequest(lobbyId: string, requesterProfileI
     throw requestError;
   }
 
-  const nextLobby = await syncLobbyWaitlistState(lobbyId, actorProfileId) ?? await fetchLobbyById(lobbyId);
-  if (nextLobby) {
-    await createOrganizerSummaryNotification(actorProfileId, nextLobby);
-  }
+  await syncLobbyWaitlistState(lobbyId, actorProfileId);
 
   await markLobbyJoinRequestNotificationsHandled(requesterProfileId, lobbyId, actorProfileId);
   await createLobbyJoinRequestResolutionNotification(actorProfileId, requesterProfileId, lobby, 'approved', membershipStatus);
@@ -2562,10 +2473,7 @@ export async function deleteLobbyMembership(lobbyId: string, profileId: string) 
 
   await markWaitlistSpotNotificationsHandled(profileId, lobbyId);
 
-  const nextLobby = await syncLobbyWaitlistState(lobbyId, profileId) ?? await fetchLobbyById(lobbyId);
-  if (nextLobby) {
-    await createOrganizerSummaryNotification(profileId, nextLobby);
-  }
+  await syncLobbyWaitlistState(lobbyId, profileId);
 }
 
 export type PlayerRatingInput = {

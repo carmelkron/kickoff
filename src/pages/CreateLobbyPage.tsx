@@ -1,10 +1,10 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { createLobby, fetchLobbyById, reinviteLobbyParticipants } from '../lib/appData';
+import { useState, type ChangeEvent, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { createLobby } from '../lib/appData';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useLang } from '../contexts/LanguageContext';
 import { buildLobbyDateTime, validateCreateLobbyDraft } from '../lib/validation';
-import type { GameType, FieldType, GenderRestriction, Lobby, LobbyAccessType } from '../types';
+import type { FieldType, GameType, GenderRestriction, LobbyAccessType } from '../types';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
 import { formatLocationLabel } from '../utils/location';
@@ -13,10 +13,9 @@ const TEAM_OPTIONS = [2, 3, 4];
 
 export default function CreateLobbyPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { currentUser } = useAuth();
   const { t, lang } = useLang();
-  const duplicateFromLobbyId = new URLSearchParams(location.search).get('duplicateFrom');
+
   const [gameType, setGameType] = useState<GameType>('friendly');
   const [accessType, setAccessType] = useState<LobbyAccessType>('open');
   const [fieldType, setFieldType] = useState<FieldType | ''>('');
@@ -37,12 +36,9 @@ export default function CreateLobbyPage() {
     address: '',
     city: '',
   });
-  const [duplicateSourceLobby, setDuplicateSourceLobby] = useState<Lobby | null>(null);
-  const [loadingDuplicateSource, setLoadingDuplicateSource] = useState(false);
-  const [invitePreviousParticipants, setInvitePreviousParticipants] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null);
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
@@ -53,89 +49,6 @@ export default function CreateLobbyPage() {
   const locationDisplayValue = selectedPlace
     ? formatLocationLabel(selectedPlace.address, selectedPlace.city)
     : formatLocationLabel(manualLocation.address, manualLocation.city);
-
-  useEffect(() => {
-    if (!duplicateFromLobbyId) {
-      setDuplicateSourceLobby(null);
-      setLoadingDuplicateSource(false);
-      setInvitePreviousParticipants(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoadingDuplicateSource(true);
-    setError('');
-
-    void fetchLobbyById(duplicateFromLobbyId)
-      .then((nextLobby) => {
-        if (cancelled) {
-          return;
-        }
-
-        if (!nextLobby) {
-          setDuplicateSourceLobby(null);
-          setError(lang === 'he' ? 'לא הצלחתי לטעון את הלובי שרצית לשכפל.' : 'Failed to load the lobby you wanted to duplicate.');
-          return;
-        }
-
-        setDuplicateSourceLobby(nextLobby);
-        setGameType(nextLobby.gameType);
-        setAccessType(nextLobby.accessType);
-        setFieldType(nextLobby.fieldType ?? '');
-        setGenderRestriction(nextLobby.genderRestriction);
-        setForm({
-          title: nextLobby.title,
-          date: '',
-          time: '',
-          numTeams: nextLobby.numTeams ?? 2,
-          playersPerTeam: nextLobby.playersPerTeam ?? 5,
-          minPointsPerGame: nextLobby.minPointsPerGame != null ? String(nextLobby.minPointsPerGame) : '',
-          minAge: nextLobby.minAge != null ? String(nextLobby.minAge) : '',
-          maxAge: nextLobby.maxAge != null ? String(nextLobby.maxAge) : '',
-          price: nextLobby.price != null ? String(nextLobby.price) : '',
-          description: nextLobby.description ?? '',
-        });
-        setManualLocation({
-          address: nextLobby.address,
-          city: nextLobby.city,
-        });
-        setSelectedPlace(
-          nextLobby.latitude != null && nextLobby.longitude != null
-            ? {
-                address: nextLobby.address,
-                city: nextLobby.city,
-                latitude: nextLobby.latitude,
-                longitude: nextLobby.longitude,
-                placeId: '',
-              }
-            : null,
-        );
-        setInvitePreviousParticipants(false);
-      })
-      .catch((nextError) => {
-        if (cancelled) {
-          return;
-        }
-
-        setDuplicateSourceLobby(null);
-        setError(nextError instanceof Error ? nextError.message : (lang === 'he' ? 'שכפול הלובי נכשל.' : 'Failed to duplicate the lobby.'));
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoadingDuplicateSource(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [duplicateFromLobbyId]);
-
-  useEffect(() => {
-    if (accessType !== 'locked' && invitePreviousParticipants) {
-      setInvitePreviousParticipants(false);
-    }
-  }, [accessType, invitePreviousParticipants]);
 
   function setField(key: 'title' | 'date' | 'time' | 'minPointsPerGame' | 'minAge' | 'maxAge' | 'price' | 'description') {
     return (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -206,39 +119,7 @@ export default function CreateLobbyPage() {
         longitude: selectedPlace?.longitude,
       });
 
-      let duplicationSummary:
-        | {
-            sourceLobbyTitle: string;
-            reinviteAttempted: boolean;
-            invitedCount: number;
-            skippedCount: number;
-          }
-        | undefined;
-
-      if (duplicateSourceLobby) {
-        duplicationSummary = {
-          sourceLobbyTitle: duplicateSourceLobby.title,
-          reinviteAttempted: false,
-          invitedCount: 0,
-          skippedCount: 0,
-        };
-      }
-
-      if (duplicateSourceLobby && accessType === 'locked' && invitePreviousParticipants) {
-        const reinviteSummary = await reinviteLobbyParticipants(
-          lobbyId,
-          currentUserId,
-          duplicateSourceLobby.players.map((player) => player.id),
-        );
-        duplicationSummary = {
-          sourceLobbyTitle: duplicateSourceLobby.title,
-          reinviteAttempted: true,
-          invitedCount: reinviteSummary.invitedCount,
-          skippedCount: reinviteSummary.skippedCount,
-        };
-      }
-
-      navigate(`/lobby/${lobbyId}`, duplicationSummary ? { state: { duplicationSummary } } : undefined);
+      navigate(`/lobby/${lobbyId}`);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Failed to create game');
       setSubmitting(false);
@@ -249,35 +130,10 @@ export default function CreateLobbyPage() {
     <main className="max-w-lg mx-auto px-4 py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">{t.create.title}</h1>
-        <p className="text-gray-500 mt-1">
-          {duplicateSourceLobby
-            ? (lang === 'he' ? 'הלובי שוכפל עם אותן הגדרות. נשאר רק לבחור תאריך ושעה חדשים.' : 'This lobby was duplicated with the same settings. Only the new date and time are left.')
-            : t.create.subtitle}
-        </p>
+        <p className="text-gray-500 mt-1">{t.create.subtitle}</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {loadingDuplicateSource && (
-          <div className="rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-800">
-            {lang === 'he' ? 'טוען את פרטי הלובי לשכפול...' : 'Loading the lobby details to duplicate...'}
-          </div>
-        )}
-
-        {duplicateSourceLobby && (
-          <Card>
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-gray-900">
-                {lang === 'he' ? 'שכפול מלובי היסטורי' : 'Duplicating from a past lobby'}
-              </p>
-              <p className="text-sm text-gray-600">
-                {lang === 'he'
-                  ? `הגדרות הלובי הועתקו מ-${duplicateSourceLobby.title}. התאריך והשעה אופסו כדי שתבחרו חדשים.`
-                  : `The lobby settings were copied from ${duplicateSourceLobby.title}. The date and time were cleared so you can choose new ones.`}
-              </p>
-            </div>
-          </Card>
-        )}
-
         <Card>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -346,8 +202,8 @@ export default function CreateLobbyPage() {
             </div>
             <p className="text-xs text-gray-400 mt-2">
               {gameType === 'friendly'
-                ? (lang === 'he' ? 'משחק ידידותי — ללא חלוקת נקודות תחרות' : 'Friendly game — no competitive points are awarded')
-                : (lang === 'he' ? 'משחק תחרותי — בסיום מחולקות נקודות תחרות לפי תוצאת הקבוצות' : 'Competitive — competitive points are awarded after the result is submitted')}
+                ? (lang === 'he' ? 'משחק ידידותי, בלי חלוקת נקודות תחרותיות.' : 'Friendly game with no competitive points awarded.')
+                : (lang === 'he' ? 'משחק תחרותי, עם חלוקת נקודות אחרי דיווח תוצאה.' : 'Competitive game with points awarded after the result is submitted.')}
             </p>
           </div>
         </Card>
@@ -400,11 +256,6 @@ export default function CreateLobbyPage() {
               required
             />
             {selectedPlace && <SelectedPlaceNotice place={selectedPlace} lang={lang} />}
-            {selectedPlace && (
-              <p className="hidden">
-                ✓ {selectedPlace.city && `${selectedPlace.city} · `}{selectedPlace.latitude.toFixed(4)}, {selectedPlace.longitude.toFixed(4)}
-              </p>
-            )}
             <div className="mt-3 grid grid-cols-1 gap-3 rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-3 sm:grid-cols-2">
               <Input
                 value={manualLocation.address}
@@ -503,35 +354,53 @@ export default function CreateLobbyPage() {
               {lang === 'he' ? 'סוג מגרש (אופציונלי)' : 'Field type (optional)'}
             </label>
             <div className="flex gap-2">
-              {([['grass', lang === 'he' ? '🌿 דשא' : '🌿 Grass'], ['asphalt', lang === 'he' ? '⬛ אספלט' : '⬛ Asphalt'], ['indoor', lang === 'he' ? '🏟️ אולם' : '🏟️ Indoor']] as const).map(([val, label]) => (
+              {([
+                ['grass', lang === 'he' ? '🌿 דשא' : '🌿 Grass'],
+                ['asphalt', lang === 'he' ? '⬛ אספלט' : '⬛ Asphalt'],
+                ['indoor', lang === 'he' ? '🏟️ אולם' : '🏟️ Indoor'],
+              ] as const).map(([val, label]) => (
                 <button
                   key={val}
                   type="button"
-                  onClick={() => setFieldType((prev) => prev === val ? '' : val)}
-                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all border ${fieldType === val ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}
+                  onClick={() => setFieldType((prev) => (prev === val ? '' : val))}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all border ${
+                    fieldType === val
+                      ? 'bg-primary-600 text-white border-primary-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
+                  }`}
                 >
                   {label}
                 </button>
               ))}
             </div>
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {lang === 'he' ? 'מגבלת מגדר' : 'Gender restriction'}
             </label>
             <div className="flex gap-2">
-              {([['none', lang === 'he' ? 'כולם' : 'All'], ['male', lang === 'he' ? '👨 גברים' : '👨 Men only'], ['female', lang === 'he' ? '👩 נשים' : '👩 Women only']] as const).map(([val, label]) => (
+              {([
+                ['none', lang === 'he' ? 'כולם' : 'All'],
+                ['male', lang === 'he' ? '👨 גברים' : '👨 Men only'],
+                ['female', lang === 'he' ? '👩 נשים' : '👩 Women only'],
+              ] as const).map(([val, label]) => (
                 <button
                   key={val}
                   type="button"
                   onClick={() => setGenderRestriction(val)}
-                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all border ${genderRestriction === val ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all border ${
+                    genderRestriction === val
+                      ? 'bg-primary-600 text-white border-primary-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
+                  }`}
                 >
                   {label}
                 </button>
               ))}
             </div>
           </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {lang === 'he' ? 'טווח גילאים (אופציונלי)' : 'Age range (optional)'}
@@ -573,29 +442,6 @@ export default function CreateLobbyPage() {
             />
           </Field>
         </Card>
-
-        {duplicateSourceLobby && accessType === 'locked' && (
-          <Card>
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={invitePreviousParticipants}
-                onChange={(event) => setInvitePreviousParticipants(event.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-300"
-              />
-              <div>
-                <p className="text-sm font-medium text-gray-900">
-                  {lang === 'he' ? 'להזמין מחדש את משתתפי הלובי הקודם' : 'Re-invite players from the previous lobby'}
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  {lang === 'he'
-                    ? 'אחרי הפרסום ננסה לשלוח invite מחדש למי שהיה בלובי הקודם, כל עוד אפשר להזמין אותו ללובי הנעול החדש.'
-                    : 'After publishing, we will try to invite back players from the previous lobby as long as they are eligible for the new locked lobby.'}
-                </p>
-              </div>
-            </label>
-          </Card>
-        )}
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 

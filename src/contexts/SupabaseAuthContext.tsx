@@ -2,7 +2,6 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { AuthUser, LobbyHistoryEntry, RatingEntry, Gender } from '../types';
 import {
   createFriendRequestNotification,
-  createFriendRequestResolutionNotification,
   markFriendRequestNotificationsHandled,
 } from '../lib/appNotifications';
 import { fetchCompetitiveProfileStats, fetchProfileSkillsMap } from '../lib/appData';
@@ -521,8 +520,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     await markFriendRequestNotificationsHandled(requesterId, currentUser.id);
-    await createFriendRequestResolutionNotification(currentUser.id, currentUser.name, requesterId, 'accepted');
-
     await refresh((await supabase.auth.getUser()).data.user?.id ?? null);
   };
 
@@ -543,8 +540,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     await markFriendRequestNotificationsHandled(requesterId, currentUser.id);
-    await createFriendRequestResolutionNotification(currentUser.id, currentUser.name, requesterId, 'declined');
-
     await refresh((await supabase.auth.getUser()).data.user?.id ?? null);
   };
 

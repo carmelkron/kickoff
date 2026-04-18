@@ -16,6 +16,16 @@ type NotificationKind =
   | 'team_assigned'
   | 'organizer_summary';
 
+const VISIBLE_NOTIFICATION_KINDS: NotificationKind[] = [
+  'friend_request',
+  'lobby_join_request',
+  'lobby_join_request_approved',
+  'lobby_join_request_declined',
+  'waitlist_spot_opened',
+  'lobby_invite',
+  'competitive_result',
+];
+
 type NotificationRow = {
   id: string;
   profile_id: string;
@@ -332,6 +342,7 @@ export async function fetchNotifications(profileId: string, lang: Language): Pro
     .from('notifications')
     .select('id, profile_id, actor_profile_id, lobby_id, kind, data, is_read, created_at')
     .eq('profile_id', profileId)
+    .in('kind', VISIBLE_NOTIFICATION_KINDS)
     .order('created_at', { ascending: false })
     .limit(30);
 
