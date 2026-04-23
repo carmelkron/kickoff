@@ -32,7 +32,7 @@ export default function ProfileDrawer({ open, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-[65] bg-black/35 backdrop-blur-sm" onClick={onClose}>
       <aside
-        className="ms-auto flex h-full w-[min(24rem,92vw)] flex-col bg-[var(--panel)] px-5 pb-6 pt-8 shadow-[0_30px_80px_rgba(7,19,16,0.18)]"
+        className="ml-auto flex h-full w-[min(24rem,92vw)] flex-col bg-[var(--panel)] px-5 pb-6 pt-8 shadow-[0_30px_80px_rgba(15,23,42,0.18)]"
         onClick={(event) => event.stopPropagation()}
       >
         <button
@@ -56,7 +56,7 @@ export default function ProfileDrawer({ open, onClose }: Props) {
           {currentUser.bio && (
             <p className="mt-4 line-clamp-2 text-sm leading-6 text-[var(--muted)]">{currentUser.bio}</p>
           )}
-          <div className="mt-4 inline-flex rounded-full bg-[var(--accent-soft)] px-3 py-1 text-xs font-semibold text-[var(--accent)]">
+          <div className="mt-4 inline-flex rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-600">
             {lang === 'he' ? 'פתח פרופיל מלא' : 'Open full profile'}
           </div>
         </button>
@@ -101,7 +101,7 @@ function DrawerAction({ icon, label, onClick }: { icon: ReactNode; label: string
       onClick={onClick}
       className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-start text-sm font-semibold text-[var(--text)] transition-colors hover:bg-black/5"
     >
-      <span className="text-[var(--accent)]">{icon}</span>
+      <span className="text-primary-600">{icon}</span>
       <span>{label}</span>
     </button>
   );

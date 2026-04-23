@@ -95,7 +95,6 @@ describe('HomeLive', () => {
     renderHome();
 
     expect(await screen.findByText('Sunset 6v6')).toBeInTheDocument();
-    expect(screen.getByText('Discover one great lobby at a time')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Open lobby/i }));
     expect(await screen.findByText('Lobby Details')).toBeInTheDocument();

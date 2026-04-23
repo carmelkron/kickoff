@@ -92,7 +92,7 @@ export default function AppShell() {
     <div className="min-h-screen bg-[var(--app-bg)] text-[var(--text)]">
       {currentUser && pendingResultReminder && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-[30px] bg-[var(--panel)] p-6 shadow-[0_28px_80px_rgba(7,19,16,0.18)]">
+          <div className="w-full max-w-md rounded-[30px] bg-[var(--panel)] p-6 shadow-[0_28px_80px_rgba(15,23,42,0.18)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold text-amber-600">
@@ -138,14 +138,14 @@ export default function AppShell() {
         </div>
       )}
 
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--app-border)] bg-[var(--panel)]/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-20 w-full max-w-5xl items-center gap-3 px-4">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-[var(--app-border)] bg-[var(--panel)]/95 backdrop-blur-xl">
+        <div dir="ltr" className="mx-auto flex h-20 w-full max-w-5xl items-center gap-3 px-4">
           <button
             type="button"
             onClick={() => navigate('/notifications')}
             className={`relative flex h-11 w-11 items-center justify-center rounded-full border ${
               location.pathname === '/notifications'
-                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                ? 'border-primary-600 bg-primary-50 text-primary-600'
                 : 'border-[var(--app-border)] bg-[var(--surface)] text-[var(--text)]'
             }`}
             aria-label={lang === 'he' ? 'התראות' : 'Notifications'}
@@ -161,7 +161,8 @@ export default function AppShell() {
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="flex flex-1 items-center gap-3 rounded-full border border-[var(--app-border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)] shadow-[0_8px_24px_rgba(7,19,16,0.05)]"
+            dir={lang === 'he' ? 'rtl' : 'ltr'}
+            className="flex flex-1 items-center gap-3 rounded-full border border-[var(--app-border)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--muted)] shadow-sm"
           >
             <Search size={18} />
             <span>{lang === 'he' ? 'חיפוש' : 'Search'}</span>
@@ -202,7 +203,7 @@ export default function AppShell() {
               className={({ isActive }) =>
                 `flex flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-semibold transition-colors ${
                   isActive
-                    ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                    ? 'bg-primary-50 text-primary-600'
                     : 'text-[var(--muted)]'
                 }`
               }

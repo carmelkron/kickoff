@@ -10,10 +10,6 @@ import { formatDateTime } from '../utils/format';
 function getLobbyPrimaryActionLabel(lobby: Lobby, lang: 'he' | 'en') {
   const isFull = lobby.players.length >= lobby.maxPlayers;
 
-  if (lobby.players.some((player) => player.id === lobby.createdBy)) {
-    // no-op special handling stays with status logic below
-  }
-
   if (lobby.viewerJoinRequestStatus === 'pending') {
     return lang === 'he' ? 'בקשה נשלחה' : 'Request sent';
   }
@@ -48,15 +44,21 @@ function HomeLobbyFeedCard({
   const primaryDisabled = pendingActionId === lobby.id || lobby.viewerJoinRequestStatus === 'pending' || isFull;
 
   return (
-    <article className="overflow-hidden rounded-[34px] border border-[var(--app-border)] bg-[var(--panel)] shadow-[0_28px_90px_rgba(7,19,16,0.08)]">
-      <div className="h-40 bg-[linear-gradient(135deg,rgba(15,127,84,0.22),rgba(15,127,84,0.04))] px-6 py-5">
+    <article className="overflow-hidden rounded-[28px] border border-gray-100 bg-white shadow-sm">
+      <div className="border-b border-gray-100 bg-white px-6 py-5">
         <div className="flex items-center justify-between gap-3">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-[var(--text)] shadow-sm">
-            {lobby.gameType === 'competitive' ? <Trophy size={12} className="text-[var(--accent)]" /> : <Users size={12} className="text-[var(--accent)]" />}
+          <div
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+              lobby.gameType === 'competitive'
+                ? 'bg-primary-100 text-primary-700'
+                : 'bg-green-100 text-green-700'
+            }`}
+          >
+            {lobby.gameType === 'competitive' ? <Trophy size={12} /> : <Users size={12} />}
             <span>{lobby.gameType === 'competitive' ? (lang === 'he' ? 'תחרותי' : 'Competitive') : (lang === 'he' ? 'ידידותי' : 'Friendly')}</span>
           </div>
           {lobby.accessType === 'locked' && (
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/80 px-3 py-1 text-xs font-semibold text-white">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-gray-900 px-3 py-1 text-xs font-semibold text-white">
               <Lock size={12} />
               <span>{lang === 'he' ? 'לובי נעול' : 'Locked lobby'}</span>
             </div>
@@ -65,14 +67,14 @@ function HomeLobbyFeedCard({
 
         <div className="mt-8 flex items-end justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-[var(--muted)]">{lobby.city}</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--text)]">{lobby.title}</h2>
+            <p className="text-sm font-medium text-gray-500">{lobby.city}</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">{lobby.title}</h2>
           </div>
-          <div className="rounded-3xl bg-white/75 px-4 py-3 text-end shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+          <div className="rounded-3xl bg-gray-50 px-4 py-3 text-end">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
               {lang === 'he' ? 'שחקנים' : 'Players'}
             </p>
-            <p className="mt-1 text-xl font-semibold text-[var(--text)]">
+            <p className="mt-1 text-xl font-semibold text-gray-900">
               {lobby.players.length}/{lobby.maxPlayers}
             </p>
           </div>
@@ -80,11 +82,18 @@ function HomeLobbyFeedCard({
       </div>
 
       <div className="space-y-5 px-6 py-6">
-        <div className="flex items-center gap-3 rounded-[24px] bg-[var(--surface)] px-4 py-3">
-          <MapPin size={18} className="text-[var(--accent)]" />
+        <div className="flex items-center gap-3 rounded-[24px] bg-gray-50 px-4 py-3">
+          <MapPin size={18} className="text-primary-600" />
           <div>
-            <p className="text-sm font-semibold text-[var(--text)]">{formatDateTime(lobby.datetime, lang, lang === 'he' ? 'היום' : 'Today', lang === 'he' ? 'מחר' : 'Tomorrow')}</p>
-            <p className="mt-1 text-sm text-[var(--muted)]">{lobby.address}</p>
+            <p className="text-sm font-semibold text-gray-900">
+              {formatDateTime(
+                lobby.datetime,
+                lang,
+                lang === 'he' ? 'היום' : 'Today',
+                lang === 'he' ? 'מחר' : 'Tomorrow',
+              )}
+            </p>
+            <p className="mt-1 text-sm text-gray-500">{lobby.address}</p>
           </div>
         </div>
 
@@ -95,7 +104,11 @@ function HomeLobbyFeedCard({
           />
           <StatPill
             title={lang === 'he' ? 'גישה' : 'Access'}
-            value={lobby.accessType === 'locked' ? (lobby.viewerHasAccess ? (lang === 'he' ? 'מאושר' : 'Approved') : (lang === 'he' ? 'דורש אישור' : 'Approval needed')) : (lang === 'he' ? 'פתוח' : 'Open')}
+            value={
+              lobby.accessType === 'locked'
+                ? (lobby.viewerHasAccess ? (lang === 'he' ? 'מאושר' : 'Approved') : (lang === 'he' ? 'דורש אישור' : 'Approval needed'))
+                : (lang === 'he' ? 'פתוח' : 'Open')
+            }
           />
           <StatPill
             title={lang === 'he' ? 'מחיר' : 'Price'}
@@ -108,11 +121,11 @@ function HomeLobbyFeedCard({
         </div>
 
         {lobby.description && (
-          <p className="text-sm leading-7 text-[var(--muted)]">{lobby.description}</p>
+          <p className="text-sm leading-7 text-gray-600">{lobby.description}</p>
         )}
 
         {lobby.viewerHasFriendInside && (
-          <div className="rounded-[24px] border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          <div className="rounded-[24px] border border-primary-100 bg-primary-50 px-4 py-3 text-sm font-medium text-primary-700">
             {lang === 'he'
               ? 'יש כבר חברים שלך בפנים. שווה להצטרף לפני שהמקומות ייגמרו.'
               : 'Friends are already inside. Worth jumping in before the spots run out.'}
@@ -124,14 +137,14 @@ function HomeLobbyFeedCard({
             type="button"
             onClick={onPrimaryAction}
             disabled={primaryDisabled}
-            className="flex-1 rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(15,127,84,0.24)] disabled:cursor-not-allowed disabled:opacity-55"
+            className="flex-1 rounded-full bg-primary-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-55"
           >
             {pendingActionId === lobby.id ? (lang === 'he' ? 'שולח...' : 'Working...') : primaryLabel}
           </button>
           <button
             type="button"
             onClick={onOpen}
-            className="inline-flex items-center gap-2 rounded-full border border-[var(--app-border)] px-5 py-3 text-sm font-semibold text-[var(--text)]"
+            className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-50"
           >
             {lang === 'he' ? 'פתח לובי' : 'Open lobby'}
             <ArrowRight size={15} className={lang === 'he' ? '' : 'rotate-180'} />
@@ -144,9 +157,9 @@ function HomeLobbyFeedCard({
 
 function StatPill({ title, value }: { title: string; value: string }) {
   return (
-    <div className="rounded-[22px] border border-[var(--app-border)] bg-[var(--surface)] px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">{title}</p>
-      <p className="mt-2 text-sm font-semibold text-[var(--text)]">{value}</p>
+    <div className="rounded-[22px] border border-gray-100 bg-gray-50 px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{title}</p>
+      <p className="mt-2 text-sm font-semibold text-gray-900">{value}</p>
     </div>
   );
 }
@@ -204,20 +217,6 @@ export default function HomeLive() {
 
   return (
     <section className="pb-4">
-      <div className="rounded-[32px] bg-[linear-gradient(135deg,rgba(15,127,84,0.18),rgba(15,127,84,0.02))] px-6 py-7 shadow-[0_24px_70px_rgba(7,19,16,0.05)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--accent)]">
-          KickOff Feed
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--text)]">
-          {lang === 'he' ? 'מוצאים לובי אחד מעולה בכל פעם' : 'Discover one great lobby at a time'}
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--muted)]">
-          {lang === 'he'
-            ? 'הפיד החדש ממוקד לגמרי במציאת לובים. כל כרטיס מספר מהר מה חשוב: מי בפנים, איפה זה קורה, ומה צריך לעשות כדי להצטרף.'
-            : 'The new home feed is all about finding lobbies fast. Each card tells you who is inside, where it happens, and what it takes to join.'}
-        </p>
-      </div>
-
       {loadError && (
         <div className="mt-5 rounded-[24px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
           {loadError}
@@ -229,7 +228,7 @@ export default function HomeLive() {
           {lang === 'he' ? 'טוען לובים...' : 'Loading lobbies...'}
         </p>
       ) : lobbies.length === 0 ? (
-        <div className="mt-6 rounded-[32px] border border-[var(--app-border)] bg-[var(--panel)] px-6 py-16 text-center shadow-[0_24px_70px_rgba(7,19,16,0.05)]">
+        <div className="mt-6 rounded-[32px] border border-[var(--app-border)] bg-[var(--panel)] px-6 py-16 text-center shadow-sm">
           <p className="text-lg font-semibold text-[var(--text)]">
             {lang === 'he' ? 'אין כרגע לובים זמינים' : 'No lobbies are available right now'}
           </p>
@@ -240,7 +239,7 @@ export default function HomeLive() {
           </p>
         </div>
       ) : (
-        <div className="mt-6 space-y-6">
+        <div className="space-y-6">
           {lobbies.map((lobby) => (
             <HomeLobbyFeedCard
               key={lobby.id}

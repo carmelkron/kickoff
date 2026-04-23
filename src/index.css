@@ -3,27 +3,27 @@
 @tailwind utilities;
 
 :root {
-  --app-bg: #f3f6f3;
+  --app-bg: #f8fafc;
   --panel: #ffffff;
-  --surface: #eef3ef;
-  --text: #10221d;
-  --muted: #5f746d;
-  --accent: #0f7f54;
-  --accent-soft: #dff4ea;
-  --app-border: rgba(16, 34, 29, 0.1);
+  --surface: #f9fafb;
+  --text: #111827;
+  --muted: #6b7280;
+  --accent: #16a34a;
+  --accent-soft: #f0fdf4;
+  --app-border: rgba(17, 24, 39, 0.08);
   color-scheme: light;
 }
 
 :root.dark,
 [data-theme='dark'] {
-  --app-bg: #071310;
-  --panel: #0d1d18;
-  --surface: #122720;
-  --text: #f2f8f4;
-  --muted: #a4b5af;
-  --accent: #31c98a;
-  --accent-soft: rgba(49, 201, 138, 0.14);
-  --app-border: rgba(242, 248, 244, 0.1);
+  --app-bg: #111827;
+  --panel: #1f2937;
+  --surface: #111827;
+  --text: #f9fafb;
+  --muted: #9ca3af;
+  --accent: #22c55e;
+  --accent-soft: rgba(34, 197, 94, 0.16);
+  --app-border: rgba(249, 250, 251, 0.1);
   color-scheme: dark;
 }
 
