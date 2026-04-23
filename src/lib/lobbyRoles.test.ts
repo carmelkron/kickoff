@@ -33,4 +33,9 @@ describe('lobbyRoles', () => {
       ),
     ).toBe(false);
   });
+
+  it('returns false when the profile id is missing', () => {
+    expect(isSecondaryLobbyOrganizer(lobby, undefined)).toBe(false);
+    expect(canManageLobby(lobby, null)).toBe(false);
+  });
 });

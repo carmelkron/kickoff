@@ -646,7 +646,7 @@ export default function ProfileLive() {
                     </span>
                   </div>
                 </button>
-                {isMe && (
+                {false && (
                   <button
                     type="button"
                     onClick={() => navigate(`/create?duplicateFrom=${encodeURIComponent(entry.lobbyId)}`)}

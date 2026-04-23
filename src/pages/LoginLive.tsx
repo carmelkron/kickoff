@@ -45,10 +45,11 @@ export default function LoginLive() {
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-1.5">
             {lang === 'he' ? 'אימייל' : 'Email'}
           </label>
           <input
+            id="login-email"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -59,10 +60,11 @@ export default function LoginLive() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+          <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-1.5">
             {lang === 'he' ? 'סיסמה' : 'Password'}
           </label>
           <input
+            id="login-password"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}

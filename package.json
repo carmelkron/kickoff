@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "seed:supabase": "node scripts/seed-supabase.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.0.2",
@@ -21,12 +22,17 @@
     "react-router-dom": "^6.22.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/google.maps": "^3.58.1",
     "@types/leaflet": "^1.9.21",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.1",
+    "@vitest/coverage-v8": "^4.1.4",
     "autoprefixer": "^10.4.18",
+    "jsdom": "^29.0.2",
     "postcss": "^8.4.35",
     "supabase": "^2.92.1",
     "tailwindcss": "^3.4.1",

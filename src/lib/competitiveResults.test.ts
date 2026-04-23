@@ -4,6 +4,8 @@ import { calculateCompetitiveStandings, resolveCompetitiveTier } from './competi
 describe('competitiveResults', () => {
   it('moves players through tiers based on their current competitive points', () => {
     expect(resolveCompetitiveTier(0)).toBe('starter');
+    expect(resolveCompetitiveTier(-10)).toBe('starter');
+    expect(resolveCompetitiveTier(Number.NaN)).toBe('starter');
     expect(resolveCompetitiveTier(149)).toBe('starter');
     expect(resolveCompetitiveTier(150)).toBe('contender');
     expect(resolveCompetitiveTier(300)).toBe('elite');
@@ -105,5 +107,79 @@ describe('competitiveResults', () => {
     expect(standings[2].playerAwards[0].awardedPoints).toBe(0);
     expect(standings[3].rank).toBe(3.5);
     expect(standings[3].playerAwards[0].awardedPoints).toBe(0);
+  });
+
+  it('throws when team counts or wins are invalid', () => {
+    expect(() => calculateCompetitiveStandings([
+      {
+        teamId: 'solo',
+        color: 'blue',
+        teamNumber: 1,
+        wins: 1,
+        players: [],
+      },
+    ])).toThrow('Competitive results currently support 2 to 4 teams.');
+
+    expect(() => calculateCompetitiveStandings([
+      {
+        teamId: 'blue',
+        color: 'blue',
+        teamNumber: 1,
+        wins: -1,
+        players: [],
+      },
+      {
+        teamId: 'red',
+        color: 'red',
+        teamNumber: 2,
+        wins: 1.5,
+        players: [],
+      },
+    ])).toThrow('Each team must have a valid number of wins.');
+  });
+
+  it('uses fallback awarded points when a team has no player awards', () => {
+    const standings = calculateCompetitiveStandings([
+      {
+        teamId: 'blue',
+        color: 'blue',
+        teamNumber: 1,
+        wins: 2,
+        players: [],
+      },
+      {
+        teamId: 'yellow',
+        color: 'yellow',
+        teamNumber: 2,
+        wins: 2,
+        players: [],
+      },
+      {
+        teamId: 'red',
+        color: 'red',
+        teamNumber: 3,
+        wins: 0,
+        players: [],
+      },
+    ]);
+
+    expect(standings[0]).toMatchObject({
+      rank: 1.5,
+      awardedPoints: 25,
+      awardedPointsMax: 25,
+      playerAwards: [],
+    });
+    expect(standings[1]).toMatchObject({
+      rank: 1.5,
+      awardedPoints: 25,
+      awardedPointsMax: 25,
+      playerAwards: [],
+    });
+    expect(standings[2]).toMatchObject({
+      rank: 3,
+      awardedPoints: 10,
+      awardedPointsMax: 10,
+      playerAwards: [],
+    });
   });
 });

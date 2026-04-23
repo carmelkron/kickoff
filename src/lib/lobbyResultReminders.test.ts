@@ -3,6 +3,9 @@ import {
   LOBBY_RESULT_REMINDER_DELAY_MS,
   buildPendingLobbyResultReminders,
   canSubmitLobbyResult,
+  dismissLobbyResultReminderForSession,
+  getLobbyResultReminderTime,
+  isLobbyResultReminderDismissedForSession,
 } from './lobbyResultReminders';
 
 describe('lobbyResultReminders', () => {
@@ -24,6 +27,10 @@ describe('lobbyResultReminders', () => {
         LOBBY_RESULT_REMINDER_DELAY_MS,
       ),
     ).toBe(true);
+  });
+
+  it('returns false for invalid lobby datetimes', () => {
+    expect(canSubmitLobbyResult('not-a-real-date')).toBe(false);
   });
 
   it('returns only due competitive lobbies that still need results', () => {
@@ -123,5 +130,20 @@ describe('lobbyResultReminders', () => {
     );
 
     expect(reminders.map((reminder) => reminder.lobbyId)).toEqual(['earlier', 'later']);
+  });
+
+  it('computes reminder time and stores dismissed reminders in session', () => {
+    expect(getLobbyResultReminderTime('2026-04-17T10:00:00.000Z').toISOString()).toBe('2026-04-17T12:00:00.000Z');
+    expect(isLobbyResultReminderDismissedForSession('lobby-1')).toBe(false);
+
+    dismissLobbyResultReminderForSession('lobby-1');
+
+    expect(isLobbyResultReminderDismissedForSession('lobby-1')).toBe(true);
+  });
+
+  it('ignores malformed dismissed-reminder session data', () => {
+    window.sessionStorage.setItem('kickoff_result_reminder_dismissed_lobbies', '{"bad":true}');
+
+    expect(isLobbyResultReminderDismissedForSession('lobby-1')).toBe(false);
   });
 });

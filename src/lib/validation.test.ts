@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import type { Lobby, Player } from '../types';
-import { getJoinLobbyError, getJoinLobbyTargetStatus, sanitizeProfileSkills, validateCreateLobbyDraft, validateProfileSkills, validateRegisterDraft } from './validation';
+import {
+  buildLobbyDateTime,
+  getJoinLobbyError,
+  getJoinLobbyTargetStatus,
+  isValidEmail,
+  normalizeText,
+  sanitizeProfileSkills,
+  validateCreateLobbyDraft,
+  validateCreateLobbyPayload,
+  validateProfileSkills,
+  validateRegisterDraft,
+} from './validation';
 
 function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
@@ -81,6 +92,12 @@ describe('validateRegisterDraft', () => {
 });
 
 describe('profile skills helpers', () => {
+  it('normalizes free text and validates email addresses', () => {
+    expect(normalizeText('  Jane   Doe  ')).toBe('Jane Doe');
+    expect(isValidEmail('jane@example.com')).toBe(true);
+    expect(isValidEmail('jane.example.com')).toBe(false);
+  });
+
   it('sanitizes and deduplicates skills', () => {
     expect(sanitizeProfileSkills(['  Finishing ', 'finishing', '', '1v1 defending'])).toEqual([
       'Finishing',
@@ -95,6 +112,11 @@ describe('profile skills helpers', () => {
 });
 
 describe('validateCreateLobbyDraft', () => {
+  it('builds a valid lobby date-time and rejects invalid values', () => {
+    expect(buildLobbyDateTime('2099-06-01', '20:30')?.toISOString()).toContain('2099-06-01T');
+    expect(buildLobbyDateTime('2099-13-01', '20:30')).toBeNull();
+  });
+
   it('accepts a valid lobby draft', () => {
     const errors = validateCreateLobbyDraft(
       {
@@ -196,14 +218,54 @@ describe('validateCreateLobbyDraft', () => {
 
     expect(errors).toContain('Minimum points per game must be between 0 and 99.99.');
   });
+
+  it('rejects malformed payload values on the payload validator too', () => {
+    const errors = validateCreateLobbyPayload(
+      {
+        title: 'Hi',
+        address: '1',
+        city: 'T',
+        datetime: 'not-a-date',
+        numTeams: 5,
+        playersPerTeam: 20,
+        minAge: 5,
+        maxAge: 100,
+        minPointsPerGame: Number.POSITIVE_INFINITY,
+        price: 1000,
+        description: 'x'.repeat(501),
+      },
+      new Date('2026-04-23T00:00:00.000Z'),
+    );
+
+    expect(errors).toContain('Choose a valid date and time.');
+    expect(errors).toContain('Number of teams must be between 2 and 4.');
+    expect(errors).toContain('Players per team must be between 3 and 11.');
+    expect(errors).toContain('Total max players must be between 6 and 44.');
+    expect(errors).toContain('Minimum age must be between 6 and 99.');
+    expect(errors).toContain('Maximum age must be between 6 and 99.');
+    expect(errors).toContain('Minimum points per game must be between 0 and 99.99.');
+    expect(errors).toContain('Price must be between 0 and 999.');
+    expect(errors).toContain('Description must be 500 characters or fewer.');
+  });
 });
 
 describe('getJoinLobbyError', () => {
+  it('requires login before joining', () => {
+    expect(getJoinLobbyError(makeLobby(), null)).toBe('Please log in to join this game.');
+  });
+
   it('blocks duplicate membership', () => {
     const player = makePlayer();
     const lobby = makeLobby({ players: [player] });
 
     expect(getJoinLobbyError(lobby, player)).toBe('You are already in this game.');
+  });
+
+  it('blocks duplicate waitlist membership by default', () => {
+    const player = makePlayer();
+    const lobby = makeLobby({ waitlist: [player] });
+
+    expect(getJoinLobbyError(lobby, player)).toBe('You are already on the waitlist.');
   });
 
   it('allows waitlist promotion when requested', () => {
@@ -227,11 +289,37 @@ describe('getJoinLobbyError', () => {
     expect(getJoinLobbyError(lobby, player)).toBe('This lobby is for players aged 18 and up.');
   });
 
+  it('blocks players above the maximum age or with invalid birthdates', () => {
+    const tooOldPlayer = makePlayer({ birthdate: '1980-01-01' });
+    const invalidBirthdatePlayer = makePlayer({ birthdate: 'not-a-date' });
+    const lobby = makeLobby({ maxAge: 35, datetime: '2026-04-23T18:00:00.000Z' });
+
+    expect(getJoinLobbyError(lobby, tooOldPlayer)).toBe('This lobby is for players up to age 35.');
+    expect(getJoinLobbyError(lobby, invalidBirthdatePlayer)).toBe('Add a valid birth date in your profile to join this age-restricted lobby.');
+  });
+
   it('blocks players below the required competitive points per game threshold', () => {
     const player = makePlayer({ competitivePoints: 36, competitiveGamesPlayed: 6, competitivePointsPerGame: 6 });
     const lobby = makeLobby({ minPointsPerGame: 7.5 });
 
     expect(getJoinLobbyError(lobby, player)).toBe('This lobby requires at least 7.5 competitive points per game.');
+  });
+
+  it('allows eligible players to join', () => {
+    const player = makePlayer({
+      birthdate: '2000-04-23',
+      competitivePoints: 50,
+      competitiveGamesPlayed: 5,
+      competitivePointsPerGame: 10,
+    });
+    const lobby = makeLobby({
+      minAge: 18,
+      maxAge: 35,
+      minPointsPerGame: 7.5,
+      datetime: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(getJoinLobbyError(lobby, player)).toBeNull();
   });
 });
 
