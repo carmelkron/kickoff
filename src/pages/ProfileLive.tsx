@@ -300,12 +300,6 @@ export default function ProfileLive() {
               <div>
                 <h1 className="text-xl font-bold text-gray-900">{profile.name}</h1>
                 {profile.position && <p className="text-sm text-gray-500 mt-0.5">{profile.position}</p>}
-                {profile.gender && (
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {profile.gender === 'male' ? '👨 ' : profile.gender === 'female' ? '👩 ' : '⚧ '}
-                    {profile.gender === 'male' ? (lang === 'he' ? 'זכר' : 'Male') : profile.gender === 'female' ? (lang === 'he' ? 'נקבה' : 'Female') : (lang === 'he' ? 'אחר' : 'Other')}
-                  </p>
-                )}
                 {isMe && (
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-xs bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full">

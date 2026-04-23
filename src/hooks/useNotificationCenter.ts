@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAppPreferences } from '../contexts/AppPreferencesContext';
@@ -21,6 +21,7 @@ import { mapNotificationKindToPreference } from '../lib/preferences';
 import { requireSupabase } from '../lib/supabase';
 
 export function useNotificationCenter() {
+  const instanceId = useId();
   const navigate = useNavigate();
   const { lang } = useLang();
   const { notificationPreferences } = useAppPreferences();
@@ -73,7 +74,7 @@ export function useNotificationCenter() {
       void loadNotifications(false);
     }, 60000);
     const channel = supabase
-      .channel(`notifications:${currentUserId}`)
+      .channel(`notifications:${currentUserId}:${instanceId}`)
       .on(
         'postgres_changes',
         {
@@ -106,7 +107,7 @@ export function useNotificationCenter() {
       document.removeEventListener('visibilitychange', handleWindowFocus);
       void supabase.removeChannel(channel);
     };
-  }, [currentUser, lang]);
+  }, [currentUser, instanceId, lang]);
 
   const visibleNotifications = useMemo(
     () => notifications.filter((notification) => notificationPreferences[mapNotificationKindToPreference(notification.kind)]),

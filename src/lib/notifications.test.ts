@@ -42,7 +42,6 @@ function makeLobby(
     waitlist: [],
     gameType: 'friendly',
     accessType: 'open',
-    genderRestriction: 'none',
     status: 'active',
     viewerHasAccess: true,
     viewerIsInvited: false,

@@ -2,8 +2,6 @@ export type Language = 'he' | 'en';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type SkillLevel = 'beginner' | 'intermediate' | 'advanced' | 'mixed';
 export type GameType = 'friendly' | 'competitive';
-export type Gender = 'male' | 'female' | 'other';
-export type GenderRestriction = 'none' | 'male' | 'female';
 export type FieldType = 'grass' | 'asphalt' | 'indoor';
 export type ContributionType = 'ball' | 'speaker';
 export type LobbyStatus = 'active' | 'deleted' | 'expired';
@@ -61,7 +59,6 @@ export interface Player {
   bio?: string;
   email?: string;
   photoUrl?: string;
-  gender?: Gender;
   birthdate?: string;
   skills?: ProfileSkill[];
   ratingHistory: RatingEntry[];
@@ -95,7 +92,6 @@ export interface Lobby {
   gameType: GameType;
   accessType: LobbyAccessType;
   fieldType?: FieldType;
-  genderRestriction: GenderRestriction;
   latitude?: number;
   longitude?: number;
   status: LobbyStatus;
@@ -279,7 +275,6 @@ export interface AuthUser {
   position?: string;
   bio?: string;
   photoUrl?: string;
-  gender?: Gender;
   birthdate?: string;
   ratingHistory: RatingEntry[];
   lobbyHistory: LobbyHistoryEntry[];

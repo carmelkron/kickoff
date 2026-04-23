@@ -151,7 +151,6 @@ describe('CreateLobbyPage', () => {
         gameType: 'friendly',
         accessType: 'open',
         fieldType: undefined,
-        genderRestriction: 'none',
         latitude: undefined,
         longitude: undefined,
       });

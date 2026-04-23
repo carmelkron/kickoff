@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { AuthUser, LobbyHistoryEntry, RatingEntry, Gender } from '../types';
+import type { AuthUser, LobbyHistoryEntry, RatingEntry } from '../types';
 import {
   createFriendRequestNotification,
   markFriendRequestNotificationsHandled,
@@ -23,7 +23,6 @@ type ProfileRow = {
   position: string | null;
   bio: string | null;
   photo_url: string | null;
-  gender: Gender | null;
   birthdate: string | null;
   rating_history: RatingEntry[];
   lobby_history: LobbyHistoryEntry[];
@@ -46,7 +45,6 @@ type RegisterInput = {
   avatarColor: string;
   position: string;
   bio?: string;
-  gender?: Gender;
   birthdate?: string;
   photoFile?: File;
   homeLatitude?: number;
@@ -95,7 +93,6 @@ function mapProfileToAuthUser(
     position: profile.position ?? undefined,
     bio: profile.bio ?? undefined,
     photoUrl: profile.photo_url ?? undefined,
-    gender: profile.gender ?? undefined,
     birthdate: profile.birthdate ?? undefined,
     skills,
     ratingHistory: profile.rating_history ?? [],
@@ -138,7 +135,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       avatarColor?: string;
       position?: string;
       bio?: string;
-      gender?: Gender;
       birthdate?: string;
       photoUrl?: string | null;
       homeLatitude?: number;
@@ -185,9 +181,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       overrides?.photoUrl ??
       (typeof metadata.photoUrl === 'string' ? metadata.photoUrl : null);
 
-    const gender =
-      overrides?.gender ??
-      (typeof metadata.gender === 'string' ? metadata.gender as Gender : undefined);
     const birthdate =
       overrides?.birthdate ??
       (typeof metadata.birthdate === 'string' ? metadata.birthdate : undefined);
@@ -203,7 +196,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       games_played: 0,
       position: position ? normalizeText(position) : null,
       bio: bio ? normalizeText(bio) : null,
-      gender: gender ?? null,
       birthdate: birthdate ?? null,
       photo_url: photoUrl,
       rating_history: [],
@@ -224,7 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function refresh(authUserId: string | null) {
     const { data: profilesData, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, birthdate, rating_history, lobby_history, home_latitude, home_longitude, home_address')
+      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, birthdate, rating_history, lobby_history, home_latitude, home_longitude, home_address')
       .order('name', { ascending: true });
 
     if (profilesError) {
@@ -376,7 +368,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           avatarColor: data.avatarColor,
           position: data.position ? normalizeText(data.position) : null,
           bio: data.bio ? normalizeText(data.bio) : null,
-          gender: data.gender ?? null,
           birthdate: data.birthdate ?? null,
         },
       },
@@ -413,7 +404,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           avatarColor: data.avatarColor,
           position: data.position,
           bio: data.bio,
-          gender: data.gender,
           birthdate: data.birthdate,
           photoUrl: recoveredPhotoUrl,
         });
@@ -447,7 +437,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         avatarColor: data.avatarColor,
         position: data.position,
         bio: data.bio,
-        gender: data.gender,
         birthdate: data.birthdate,
         photoUrl,
         homeLatitude: data.homeLatitude,

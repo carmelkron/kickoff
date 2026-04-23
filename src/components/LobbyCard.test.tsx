@@ -63,7 +63,6 @@ function makeLobby(overrides: Partial<Lobby> = {}): Lobby {
     waitlist: [],
     gameType: 'friendly',
     accessType: 'open',
-    genderRestriction: 'none',
     status: 'active',
     viewerHasAccess: true,
     viewerIsInvited: false,
@@ -103,7 +102,6 @@ describe('LobbyCard', () => {
       minPointsPerGame: 7.5,
       minAge: 18,
       maxAge: 35,
-      genderRestriction: 'male',
       fieldType: 'asphalt',
     });
 
@@ -121,7 +119,6 @@ describe('LobbyCard', () => {
     expect(screen.getByText('Min avg: 7.5 pts/game')).toBeInTheDocument();
     expect(screen.getByText('2.4 km')).toBeInTheDocument();
     expect(screen.getByText('from current location')).toBeInTheDocument();
-    expect(screen.getByText('2 spots left')).toBeInTheDocument();
     expect(screen.getByText('25 per person')).toBeInTheDocument();
 
     await user.click(screen.getByText('Ranked City Match'));

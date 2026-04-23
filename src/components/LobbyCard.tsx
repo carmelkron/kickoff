@@ -54,11 +54,6 @@ export default function LobbyCard({ lobby, distanceLabel, distanceNote }: Props)
                 {lobby.fieldType === 'grass' ? '🌿' : lobby.fieldType === 'asphalt' ? '⬛' : '🏟️'}
               </span>
             )}
-            {lobby.genderRestriction !== 'none' && (
-              <span className="text-xs text-gray-400">
-                {lobby.genderRestriction === 'male' ? '👨' : '👩'}
-              </span>
-            )}
             {lobby.accessType === 'locked' && (
               <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-700">
                 <Lock size={10} />

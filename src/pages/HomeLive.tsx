@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ArrowRight,
   Clock3,
@@ -16,7 +16,7 @@ import PlayerAvatarStack from '../components/PlayerAvatarStack';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { fetchLobbies, requestLobbyAccess, upsertLobbyMembership } from '../lib/appData';
-import type { FieldType, GenderRestriction, GameType, Lobby, Player } from '../types';
+import type { FieldType, GameType, Lobby, Player } from '../types';
 import { formatAgeRange } from '../utils/age';
 import { HOME_FILTERS_SESSION_KEY, type Coords, type LocationMode, getDistanceSourceText } from '../utils/distanceSource';
 import { formatDateTime } from '../utils/format';
@@ -25,6 +25,7 @@ import { formatLocationLabel } from '../utils/location';
 
 type Tab = 'all' | 'friends';
 type RadiusOption = 5 | 10 | 20 | 50 | 999;
+type SortOption = 'recommended' | 'nearest' | 'soonest' | 'friends';
 
 type FilterState = {
   query: string;
@@ -32,10 +33,10 @@ type FilterState = {
   gameTypeFilter: GameType | 'all';
   filterFieldType: FieldType | 'all';
   filterNumTeams: number | 'all';
-  filterGender: GenderRestriction | 'all';
   minAvgCompetitivePoints: string;
   radiusKm: RadiusOption;
   tab: Tab;
+  sortBy: SortOption;
   locationMode: LocationMode;
   currentCoords: Coords | null;
 };
@@ -46,6 +47,13 @@ const RADIUS_OPTIONS: { value: RadiusOption; labelHe: string; labelEn: string }[
   { value: 20, labelHe: '20 ק"מ', labelEn: '20 km' },
   { value: 50, labelHe: '50 ק"מ', labelEn: '50 km' },
   { value: 999, labelHe: 'הכול', labelEn: 'Any' },
+];
+
+const SORT_OPTIONS: Array<{ value: SortOption; labelHe: string; labelEn: string }> = [
+  { value: 'recommended', labelHe: 'מומלץ', labelEn: 'Recommended' },
+  { value: 'nearest', labelHe: 'קרוב אליי', labelEn: 'Nearest' },
+  { value: 'soonest', labelHe: 'מתחיל בקרוב', labelEn: 'Soonest' },
+  { value: 'friends', labelHe: 'עם יותר חברים', labelEn: 'Most friends' },
 ];
 
 function avgCompetitivePoints(lobby: Lobby) {
@@ -63,10 +71,10 @@ function loadFilters(): FilterState {
     gameTypeFilter: 'all',
     filterFieldType: 'all',
     filterNumTeams: 'all',
-    filterGender: 'all',
     minAvgCompetitivePoints: '',
     radiusKm: 999,
     tab: 'all',
+    sortBy: 'recommended',
     locationMode: 'home',
     currentCoords: null,
   };
@@ -130,14 +138,48 @@ function getFieldTypeLabel(fieldType: FieldType | undefined, lang: 'he' | 'en') 
   return 'Indoor';
 }
 
-function getGenderLabel(genderRestriction: GenderRestriction, lang: 'he' | 'en') {
-  if (genderRestriction === 'none') {
-    return lang === 'he' ? 'מעורב' : 'Mixed';
+function getFriendCountInside(lobby: Lobby, friendIds: string[]) {
+  if (friendIds.length === 0) {
+    return 0;
   }
-  if (genderRestriction === 'male') {
-    return lang === 'he' ? 'גברים' : 'Men';
-  }
-  return lang === 'he' ? 'נשים' : 'Women';
+
+  return lobby.players.filter((player) => friendIds.includes(player.id)).length;
+}
+
+function sortLobbies(lobbies: Lobby[], sortBy: SortOption, friendIds: string[]) {
+  return [...lobbies].sort((left, right) => {
+    const leftFriendCount = getFriendCountInside(left, friendIds);
+    const rightFriendCount = getFriendCountInside(right, friendIds);
+    const leftDistance = typeof left.distanceKm === 'number' ? left.distanceKm : Number.POSITIVE_INFINITY;
+    const rightDistance = typeof right.distanceKm === 'number' ? right.distanceKm : Number.POSITIVE_INFINITY;
+    const leftTime = new Date(left.datetime).getTime();
+    const rightTime = new Date(right.datetime).getTime();
+
+    if (sortBy === 'nearest') {
+      return leftDistance - rightDistance || leftTime - rightTime || left.title.localeCompare(right.title);
+    }
+
+    if (sortBy === 'soonest') {
+      return leftTime - rightTime || rightFriendCount - leftFriendCount || leftDistance - rightDistance || left.title.localeCompare(right.title);
+    }
+
+    if (sortBy === 'friends') {
+      return rightFriendCount - leftFriendCount || leftDistance - rightDistance || leftTime - rightTime || left.title.localeCompare(right.title);
+    }
+
+    const leftRecommendedScore =
+      (leftFriendCount * 1000)
+      + (Number.isFinite(leftDistance) ? Math.max(0, 200 - (leftDistance * 10)) : 0)
+      + (left.accessType === 'open' ? 20 : 0);
+    const rightRecommendedScore =
+      (rightFriendCount * 1000)
+      + (Number.isFinite(rightDistance) ? Math.max(0, 200 - (rightDistance * 10)) : 0)
+      + (right.accessType === 'open' ? 20 : 0);
+
+    return rightRecommendedScore - leftRecommendedScore
+      || leftTime - rightTime
+      || left.title.localeCompare(right.title);
+  });
 }
 
 function getRequirements(lobby: Lobby, lang: 'he' | 'en') {
@@ -168,20 +210,22 @@ function HomeLobbyFeedCard({
   pendingActionId,
   onOpen,
   onPrimaryAction,
+  friendIds,
 }: {
   lobby: Lobby;
   pendingActionId: string;
   onOpen: () => void;
   onPrimaryAction: () => void;
+  friendIds: string[];
 }) {
   const { lang } = useLang();
   const isFull = lobby.players.length >= lobby.maxPlayers;
   const primaryLabel = getLobbyPrimaryActionLabel(lobby, lang);
   const primaryDisabled = pendingActionId === lobby.id || lobby.viewerJoinRequestStatus === 'pending' || isFull;
-  const spotsLeft = Math.max(0, lobby.maxPlayers - lobby.players.length);
   const ageLabel = formatAgeRange(lobby.minAge, lobby.maxAge, lang);
   const fieldTypeLabel = getFieldTypeLabel(lobby.fieldType, lang);
   const requirements = getRequirements(lobby, lang);
+  const friendCountInside = getFriendCountInside(lobby, friendIds);
 
   return (
     <article className="overflow-hidden rounded-[28px] border border-gray-100 bg-white shadow-sm">
@@ -194,11 +238,19 @@ function HomeLobbyFeedCard({
                 icon={lobby.gameType === 'competitive' ? <Trophy size={11} /> : <Users size={11} />}
                 label={lobby.gameType === 'competitive' ? (lang === 'he' ? 'תחרותי' : 'Competitive') : (lang === 'he' ? 'ידידותי' : 'Friendly')}
               />
+              {fieldTypeLabel && <StatusBadge tone="gray" label={fieldTypeLabel} />}
               {lobby.accessType === 'locked' && (
                 <StatusBadge tone="gray" icon={<Lock size={11} />} label={lang === 'he' ? 'נעול' : 'Locked'} />
               )}
-              {lobby.viewerHasFriendInside && (
-                <StatusBadge tone="primary" label={lang === 'he' ? 'חברים בפנים' : 'Friends inside'} />
+              {friendCountInside > 0 && (
+                <StatusBadge
+                  tone="primary"
+                  label={
+                    lang === 'he'
+                      ? `${friendCountInside} חבר${friendCountInside === 1 ? '' : 'ים'} בפנים`
+                      : `${friendCountInside} friend${friendCountInside === 1 ? '' : 's'} inside`
+                  }
+                />
               )}
             </div>
             <h2 className="mt-3 text-2xl font-semibold tracking-tight text-gray-900">{lobby.title}</h2>
@@ -211,11 +263,6 @@ function HomeLobbyFeedCard({
             </p>
             <p className="mt-1 text-xl font-semibold text-gray-900">
               {lobby.players.length}/{lobby.maxPlayers}
-            </p>
-            <p className={`mt-1 text-xs font-semibold ${isFull ? 'text-rose-500' : 'text-primary-600'}`}>
-              {isFull
-                ? (lang === 'he' ? 'מלא' : 'Full')
-                : (lang === 'he' ? `${spotsLeft} פנויים` : `${spotsLeft} spots left`)}
             </p>
           </div>
         </div>
@@ -241,13 +288,11 @@ function HomeLobbyFeedCard({
             icon={<Users size={16} className="text-primary-600" />}
             title={lang === 'he' ? 'עלות' : 'Price'}
             value={lobby.price && lobby.price > 0 ? `₪${lobby.price}` : (lang === 'he' ? 'חינם' : 'Free')}
-            subvalue={lobby.numTeams ? `${lobby.numTeams} ${lang === 'he' ? 'קבוצות' : 'teams'}` : undefined}
+            subvalue={lobby.accessType === 'locked' && !lobby.viewerHasAccess ? (lang === 'he' ? 'כניסה באישור' : 'Approval required') : undefined}
           />
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {fieldTypeLabel && <MetaChip label={fieldTypeLabel} />}
-          <MetaChip label={getGenderLabel(lobby.genderRestriction, lang)} />
           {ageLabel && <MetaChip label={ageLabel} />}
           {lobby.accessType === 'locked' && !lobby.viewerHasAccess && (
             <MetaChip label={lang === 'he' ? 'דורש אישור' : 'Approval required'} tone="amber" />
@@ -284,9 +329,13 @@ function HomeLobbyFeedCard({
           </div>
           <div className="text-end">
             <p className="text-sm font-semibold text-gray-900">
-              {lobby.viewerHasFriendInside
-                ? (lang === 'he' ? 'יש חברים בלובי' : 'Friends are in this lobby')
-                : (lang === 'he' ? 'ללא חברים כרגע' : 'No friends inside yet')}
+              {friendCountInside > 0
+                ? (
+                    lang === 'he'
+                      ? `${friendCountInside} חבר${friendCountInside === 1 ? '' : 'ים'} כבר בפנים`
+                      : `${friendCountInside} friend${friendCountInside === 1 ? '' : 's'} already inside`
+                  )
+                : (lang === 'he' ? 'בלי חברים בפנים כרגע' : 'No friends inside yet')}
             </p>
             <p className="mt-1 text-xs text-gray-500">
               {lobby.accessType === 'locked'
@@ -337,10 +386,10 @@ export default function HomeLive() {
     gameTypeFilter,
     filterFieldType,
     filterNumTeams,
-    filterGender,
     minAvgCompetitivePoints,
     radiusKm,
     tab,
+    sortBy,
     locationMode,
     currentCoords,
   } = filters;
@@ -361,7 +410,6 @@ export default function HomeLive() {
         gameTypeFilter: 'all' as const,
         filterFieldType: 'all' as const,
         filterNumTeams: 'all' as const,
-        filterGender: 'all' as const,
         minAvgCompetitivePoints: '',
         radiusKm: 999 as RadiusOption,
       };
@@ -435,6 +483,7 @@ export default function HomeLive() {
     setLocateError('');
   }
 
+  const friendIds = currentUser?.friends ?? [];
   const hasHomeLocation = currentUser?.homeLatitude != null && currentUser?.homeLongitude != null;
   const homeCoords = hasHomeLocation
     ? { lat: currentUser.homeLatitude as number, lng: currentUser.homeLongitude as number }
@@ -450,9 +499,8 @@ export default function HomeLive() {
         : lobby.distanceKm,
   }));
 
-  const friendIds = currentUser?.friends ?? [];
   const friendLobbies = currentUser
-    ? feedLobbies.filter((lobby) => lobby.players.some((player) => friendIds.includes(player.id)))
+    ? feedLobbies.filter((lobby) => getFriendCountInside(lobby, friendIds) > 0)
     : [];
 
   const sourceLobbies = tab === 'friends' ? friendLobbies : feedLobbies;
@@ -470,9 +518,6 @@ export default function HomeLive() {
       return false;
     }
     if (filterNumTeams !== 'all' && lobby.numTeams !== filterNumTeams) {
-      return false;
-    }
-    if (filterGender !== 'all' && lobby.genderRestriction !== filterGender) {
       return false;
     }
     if (minAverage != null && !Number.isNaN(minAverage)) {
@@ -493,12 +538,13 @@ export default function HomeLive() {
     return true;
   });
 
+  const sortedLobbies = sortLobbies(filteredLobbies, sortBy, friendIds);
+
   const activeFilterCount = [
     query.trim().length > 0,
     gameTypeFilter !== 'all',
     filterFieldType !== 'all',
     filterNumTeams !== 'all',
-    filterGender !== 'all',
     minAvgCompetitivePoints.trim().length > 0,
     radiusKm !== 999,
   ].filter(Boolean).length;
@@ -557,17 +603,31 @@ export default function HomeLive() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
             <TabButton active={tab === 'all'} onClick={() => setFilter('tab', 'all')}>
               {lang === 'he' ? 'כל הלובים' : 'All lobbies'}
             </TabButton>
             <TabButton active={tab === 'friends'} onClick={() => setFilter('tab', 'friends')}>
               {lang === 'he' ? 'עם חברים' : 'With friends'}
             </TabButton>
+            <label className="col-span-2 sm:col-span-1">
+              <span className="sr-only">{lang === 'he' ? 'מיון לובים' : 'Sort lobbies'}</span>
+              <select
+                value={sortBy}
+                onChange={(event) => setFilter('sortBy', event.target.value as SortOption)}
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 transition-colors focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary-300"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {lang === 'he' ? option.labelHe : option.labelEn}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
               onClick={() => setFilter('showFilters', !showFilters)}
-              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+              className={`col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors sm:col-span-1 ${
                 showFilters || activeFilterCount > 0
                   ? 'border-primary-600 bg-primary-600 text-white'
                   : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300'
@@ -703,21 +763,6 @@ export default function HomeLive() {
               ))}
             </FilterGroup>
 
-            <FilterGroup title={lang === 'he' ? 'מגדר' : 'Gender'}>
-              <FilterChip active={filterGender === 'all'} onClick={() => setFilter('filterGender', 'all')}>
-                {lang === 'he' ? 'הכול' : 'All'}
-              </FilterChip>
-              <FilterChip active={filterGender === 'none'} onClick={() => setFilter('filterGender', 'none')}>
-                {lang === 'he' ? 'מעורב' : 'Mixed'}
-              </FilterChip>
-              <FilterChip active={filterGender === 'male'} onClick={() => setFilter('filterGender', 'male')}>
-                {lang === 'he' ? 'גברים' : 'Men'}
-              </FilterChip>
-              <FilterChip active={filterGender === 'female'} onClick={() => setFilter('filterGender', 'female')}>
-                {lang === 'he' ? 'נשים' : 'Women'}
-              </FilterChip>
-            </FilterGroup>
-
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
                 {lang === 'he' ? 'ממוצע תחרותי מינימלי בפנים' : 'Minimum competitive average inside'}
@@ -746,7 +791,7 @@ export default function HomeLive() {
         <p className="py-16 text-center text-sm text-[var(--muted)]">
           {lang === 'he' ? 'טוען לובים...' : 'Loading lobbies...'}
         </p>
-      ) : filteredLobbies.length === 0 ? (
+      ) : sortedLobbies.length === 0 ? (
         <div className="rounded-[32px] border border-[var(--app-border)] bg-[var(--panel)] px-6 py-16 text-center shadow-sm">
           <p className="text-lg font-semibold text-[var(--text)]">
             {tab === 'friends'
@@ -761,11 +806,12 @@ export default function HomeLive() {
         </div>
       ) : (
         <div className="space-y-6">
-          {filteredLobbies.map((lobby) => (
+          {sortedLobbies.map((lobby) => (
             <HomeLobbyFeedCard
               key={lobby.id}
               lobby={lobby}
               pendingActionId={pendingActionId}
+              friendIds={friendIds}
               onOpen={() => navigate(`/lobby/${lobby.id}`)}
               onPrimaryAction={() => void handlePrimaryAction(lobby)}
             />
@@ -776,7 +822,7 @@ export default function HomeLive() {
   );
 }
 
-function FilterGroup({ title, children }: { title: string; children: React.ReactNode }) {
+function FilterGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div>
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{title}</p>
@@ -794,7 +840,7 @@ function FilterChip({
   active: boolean;
   disabled?: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
@@ -821,7 +867,7 @@ function TabButton({
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
@@ -844,7 +890,7 @@ function StatusBadge({
   tone = 'primary',
 }: {
   label: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   tone?: 'primary' | 'green' | 'gray';
 }) {
   const classes =
@@ -882,7 +928,7 @@ function InfoTile({
   value,
   subvalue,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   value: string;
   subvalue?: string;

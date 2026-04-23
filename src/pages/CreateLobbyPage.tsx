@@ -4,7 +4,7 @@ import { createLobby } from '../lib/appData';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useLang } from '../contexts/LanguageContext';
 import { buildLobbyDateTime, validateCreateLobbyDraft } from '../lib/validation';
-import type { FieldType, GameType, GenderRestriction, LobbyAccessType } from '../types';
+import type { FieldType, GameType, LobbyAccessType } from '../types';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
 import { formatLocationLabel } from '../utils/location';
@@ -19,7 +19,6 @@ export default function CreateLobbyPage() {
   const [gameType, setGameType] = useState<GameType>('friendly');
   const [accessType, setAccessType] = useState<LobbyAccessType>('open');
   const [fieldType, setFieldType] = useState<FieldType | ''>('');
-  const [genderRestriction, setGenderRestriction] = useState<GenderRestriction>('none');
   const [form, setForm] = useState({
     title: '',
     date: '',
@@ -114,7 +113,6 @@ export default function CreateLobbyPage() {
         gameType,
         accessType,
         fieldType: fieldType || undefined,
-        genderRestriction,
         latitude: selectedPlace?.latitude,
         longitude: selectedPlace?.longitude,
       });
@@ -365,32 +363,6 @@ export default function CreateLobbyPage() {
                   onClick={() => setFieldType((prev) => (prev === val ? '' : val))}
                   className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all border ${
                     fieldType === val
-                      ? 'bg-primary-600 text-white border-primary-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {lang === 'he' ? 'מגבלת מגדר' : 'Gender restriction'}
-            </label>
-            <div className="flex gap-2">
-              {([
-                ['none', lang === 'he' ? 'כולם' : 'All'],
-                ['male', lang === 'he' ? '👨 גברים' : '👨 Men only'],
-                ['female', lang === 'he' ? '👩 נשים' : '👩 Women only'],
-              ] as const).map(([val, label]) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setGenderRestriction(val)}
-                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all border ${
-                    genderRestriction === val
                       ? 'bg-primary-600 text-white border-primary-600'
                       : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
                   }`}

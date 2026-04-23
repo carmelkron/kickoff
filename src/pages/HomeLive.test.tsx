@@ -60,7 +60,6 @@ function makeLobby(overrides: Record<string, unknown> = {}) {
     waitlist: [],
     gameType: 'friendly',
     accessType: 'open',
-    genderRestriction: 'none',
     status: 'active',
     viewerHasAccess: true,
     viewerIsInvited: false,

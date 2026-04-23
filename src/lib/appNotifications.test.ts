@@ -91,7 +91,6 @@ function makeLobby(overrides: Partial<Lobby> = {}): Lobby {
     waitlist: [],
     gameType: 'competitive',
     accessType: 'open',
-    genderRestriction: 'none',
     status: 'active',
     viewerHasAccess: true,
     viewerIsInvited: false,

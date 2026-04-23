@@ -6,8 +6,6 @@ import type {
   LobbyHistoryEntry,
   GameType,
   FieldType,
-  GenderRestriction,
-  Gender,
   ContributionType,
   LobbyStatus,
   LobbyTeam,
@@ -56,8 +54,8 @@ import { buildBalancedLobbyTeams } from './teamAssignment';
 import { buildWaitlistSyncPlan } from './waitlist';
 import { SEARCH_HISTORY_LIMIT, normalizeNotificationPreferences } from './preferences';
 
-const PROFILE_SELECT_FIELDS = 'id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, birthdate, rating_history, lobby_history';
-const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, min_points_per_game, min_age, max_age, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, gender_restriction, latitude, longitude';
+const PROFILE_SELECT_FIELDS = 'id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, birthdate, rating_history, lobby_history';
+const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, min_points_per_game, min_age, max_age, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, latitude, longitude';
 const LOBBY_SELECT_FIELDS_WITH_STATUS = `${LOBBY_SELECT_FIELDS}, status`;
 
 function toAppError(error: unknown, fallbackMessage: string) {
@@ -181,7 +179,6 @@ type ProfileRow = {
   position: string | null;
   bio: string | null;
   photo_url: string | null;
-  gender: Gender | null;
   birthdate: string | null;
   rating_history: RatingEntry[];
   lobby_history: LobbyHistoryEntry[];
@@ -220,7 +217,6 @@ type LobbyRow = {
   game_type: GameType;
   access_type?: LobbyAccessType | null;
   field_type: FieldType | null;
-  gender_restriction: GenderRestriction;
   latitude: number | null;
   longitude: number | null;
   status?: 'active' | 'deleted' | 'expired' | null;
@@ -516,7 +512,6 @@ function mapProfile(row: ProfileRow, stats?: CompetitiveProfileStats): Player {
     bio: row.bio ?? undefined,
     email: row.email ?? undefined,
     photoUrl: row.photo_url ?? undefined,
-    gender: row.gender ?? undefined,
     birthdate: row.birthdate ?? undefined,
     skills: [],
     competitivePoints,
@@ -750,7 +745,6 @@ export type UpdateProfileInput = {
   name: string;
   position?: string;
   bio?: string;
-  gender?: Gender;
   birthdate?: string | null;
   photoUrl?: string | null;
   skills?: string[];
@@ -776,7 +770,6 @@ export async function updateProfile(input: UpdateProfileInput) {
       initials,
       position: input.position ?? null,
       bio: input.bio ?? null,
-      gender: input.gender ?? null,
       birthdate: input.birthdate ?? null,
       ...(input.photoUrl !== undefined ? { photo_url: input.photoUrl } : {}),
     })
@@ -1035,7 +1028,6 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       gameType: row.game_type ?? 'friendly',
       accessType: access.accessType,
       fieldType: row.field_type ?? undefined,
-      genderRestriction: row.gender_restriction ?? 'none',
       latitude: row.latitude ?? undefined,
       longitude: row.longitude ?? undefined,
       status: lobbyStatus,
@@ -2130,7 +2122,6 @@ export type CreateLobbyInput = {
   gameType: GameType;
   accessType: LobbyAccessType;
   fieldType?: FieldType;
-  genderRestriction?: GenderRestriction;
   latitude?: number;
   longitude?: number;
 };
@@ -2180,7 +2171,6 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     game_type: input.gameType,
     access_type: input.accessType,
     field_type: input.fieldType ?? null,
-    gender_restriction: input.genderRestriction ?? 'none',
     latitude: input.latitude ?? null,
     longitude: input.longitude ?? null,
     status: 'active' as const,
@@ -2210,7 +2200,6 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
       game_type: lobbyPayload.game_type,
       access_type: lobbyPayload.access_type,
       field_type: lobbyPayload.field_type,
-      gender_restriction: lobbyPayload.gender_restriction,
       latitude: lobbyPayload.latitude,
       longitude: lobbyPayload.longitude,
     }));
@@ -2601,7 +2590,6 @@ export type UpdateLobbyInput = {
   gameType: GameType;
   accessType: LobbyAccessType;
   fieldType?: FieldType;
-  genderRestriction: GenderRestriction;
   latitude?: number;
   longitude?: number;
 };
@@ -2627,7 +2615,6 @@ export async function updateLobby(input: UpdateLobbyInput) {
       game_type: input.gameType,
       access_type: input.accessType,
       field_type: input.fieldType ?? null,
-      gender_restriction: input.genderRestriction,
       latitude: input.latitude ?? null,
       longitude: input.longitude ?? null,
     })

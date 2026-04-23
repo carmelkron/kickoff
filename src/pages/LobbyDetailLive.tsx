@@ -1182,12 +1182,6 @@ export default function LobbyDetailLive() {
               {ageRangeLabel}
             </span>
           )}
-          {lobby.genderRestriction !== 'none' && (
-            <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
-              {lobby.genderRestriction === 'male' ? '👨 ' : '👩 '}
-              {lobby.genderRestriction === 'male' ? (lang === 'he' ? 'גברים בלבד' : 'Men only') : (lang === 'he' ? 'נשים בלבד' : 'Women only')}
-            </span>
-          )}
         </div>
 
         {lobby.description && (

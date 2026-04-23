@@ -6,7 +6,6 @@ import { useLang } from '../contexts/LanguageContext';
 import { updateProfile, updateHomeLocation } from '../lib/appData';
 import { getProfileSkillBadgeStyle } from '../lib/profileSkillBadges';
 import { uploadAvatar } from '../lib/storage';
-import type { Gender } from '../types';
 import { MAX_PROFILE_SKILLS, sanitizeProfileSkills, validateProfileSkills } from '../lib/validation';
 import { validateBirthdate } from '../utils/age';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
@@ -26,7 +25,6 @@ export default function EditProfilePage() {
     name: '',
     position: '',
     bio: '',
-    gender: '' as Gender | '',
     birthdate: '',
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -43,7 +41,6 @@ export default function EditProfilePage() {
         name: currentUser.name,
         position: currentUser.position ?? '',
         bio: currentUser.bio ?? '',
-        gender: currentUser.gender ?? '',
         birthdate: currentUser.birthdate ?? '',
       });
       setSkills(currentUser.skills?.map((skill) => skill.label) ?? []);
@@ -136,7 +133,6 @@ export default function EditProfilePage() {
         name: form.name.trim(),
         position: form.position,
         bio: form.bio || undefined,
-        gender: form.gender || undefined,
         birthdate: form.birthdate || null,
         photoUrl,
         skills,
@@ -203,17 +199,6 @@ export default function EditProfilePage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
-          <Field label={lang === 'he' ? 'מגדר (אופציונלי)' : 'Gender (optional)'}>
-            <div className="flex gap-2">
-              {([['male', lang === 'he' ? '👨 זכר' : '👨 Male'], ['female', lang === 'he' ? '👩 נקבה' : '👩 Female'], ['other', lang === 'he' ? '⚧ אחר' : '⚧ Other']] as const).map(([val, label]) => (
-                <button key={val} type="button"
-                  onClick={() => setForm((prev) => ({ ...prev, gender: prev.gender === val ? '' : val }))}
-                  className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${form.gender === val ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </Field>
           <Field label={lang === 'he' ? 'עמדה מועדפת' : 'Preferred position'}>
             <select value={form.position} onChange={setField('position')}
               required

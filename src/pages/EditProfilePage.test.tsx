@@ -16,7 +16,6 @@ let currentUser: {
   avatarColor: string;
   position?: string;
   bio?: string;
-  gender?: 'male' | 'female' | 'other';
   birthdate?: string;
   photoUrl?: string;
   homeAddress?: string;
@@ -111,7 +110,6 @@ function makeCurrentUser(
     avatarColor: 'bg-blue-500',
     position: 'Defense',
     bio: 'Love five-a-side.',
-    gender: 'male',
     birthdate: '1998-05-18',
     photoUrl: undefined,
     homeAddress: undefined,
@@ -211,7 +209,6 @@ describe('EditProfilePage', () => {
         name: 'Alex Captain',
         position: 'Attack',
         bio: 'Pressing high and tracking back.',
-        gender: 'male',
         birthdate: '1998-05-18',
         photoUrl: undefined,
         skills: ['Finishing', 'Leadership'],

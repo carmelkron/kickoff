@@ -4,7 +4,6 @@ import { Camera } from 'lucide-react';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useLang } from '../contexts/LanguageContext';
 import { validateRegisterDraft } from '../lib/validation';
-import type { Gender } from '../types';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
 import { formatLocationLabel } from '../utils/location';
@@ -36,7 +35,6 @@ export default function RegisterPage() {
     position: '',
     bio: '',
     avatarColor: 'bg-blue-500',
-    gender: '' as Gender | '',
     birthdate: '',
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -117,7 +115,6 @@ export default function RegisterPage() {
       avatarColor: form.avatarColor,
       position: form.position,
       bio: form.bio || undefined,
-      gender: form.gender || undefined,
       birthdate: form.birthdate || undefined,
       photoFile: photoFile ?? undefined,
       homeLatitude: homePlace?.latitude,
@@ -233,20 +230,6 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
-          <Field label={lang === 'he' ? 'מגדר (אופציונלי)' : 'Gender (optional)'}>
-            <div className="flex gap-2">
-              {([['male', lang === 'he' ? '👨 זכר' : '👨 Male'], ['female', lang === 'he' ? '👩 נקבה' : '👩 Female'], ['other', lang === 'he' ? '⚧ אחר' : '⚧ Other']] as const).map(([val, label]) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setForm((prev) => ({ ...prev, gender: prev.gender === val ? '' : val }))}
-                  className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${form.gender === val ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </Field>
           <Field label={lang === 'he' ? 'עמדה מועדפת' : 'Preferred position'}>
             <select
               value={form.position}

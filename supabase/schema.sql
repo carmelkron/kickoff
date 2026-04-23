@@ -23,7 +23,6 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
-alter table public.profiles add column if not exists gender text check (gender in ('male', 'female', 'other'));
 alter table public.profiles add column if not exists birthdate date;
 alter table public.profiles add column if not exists home_latitude double precision;
 alter table public.profiles add column if not exists home_longitude double precision;
@@ -51,7 +50,6 @@ create table if not exists public.lobbies (
   game_type text not null default 'friendly' check (game_type in ('friendly', 'competitive')),
   access_type text not null default 'open' check (access_type in ('open', 'locked')),
   field_type text check (field_type in ('grass', 'asphalt', 'indoor')),
-  gender_restriction text not null default 'none' check (gender_restriction in ('none', 'male', 'female')),
   latitude double precision,
   longitude double precision,
   status text not null default 'active' check (status in ('active', 'deleted')),
@@ -594,7 +592,6 @@ alter table public.lobbies add column if not exists access_type text not null de
 alter table public.lobbies add column if not exists min_points_per_game numeric(5, 2);
 alter table public.lobbies drop constraint if exists lobbies_access_type_check;
 alter table public.lobbies add constraint lobbies_access_type_check check (access_type in ('open', 'locked'));
-alter table public.lobbies add column if not exists gender_restriction text not null default 'none' check (gender_restriction in ('none', 'male', 'female'));
 alter table public.lobbies add column if not exists latitude double precision;
 alter table public.lobbies add column if not exists longitude double precision;
 alter table public.lobbies add column if not exists status text not null default 'active';

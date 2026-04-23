@@ -109,7 +109,6 @@ function makeLobby(overrides: Record<string, unknown> = {}) {
     passedWaitlistIds: [],
     gameType: 'friendly',
     accessType: 'open',
-    genderRestriction: 'none',
     status: 'active',
     viewerHasAccess: true,
     viewerIsInvited: false,
@@ -181,7 +180,6 @@ describe('EditLobbyPage', () => {
     await user.click(screen.getByRole('button', { name: '🏆 Competitive' }));
     await user.click(screen.getByRole('button', { name: '3 teams' }));
     await user.click(screen.getByRole('button', { name: '⬛ Asphalt' }));
-    await user.click(screen.getByRole('button', { name: '👨 Men only' }));
 
     const playersPerTeamSlider = document.querySelector('input[type="range"]');
     if (!(playersPerTeamSlider instanceof HTMLInputElement)) {
@@ -222,7 +220,6 @@ describe('EditLobbyPage', () => {
         gameType: 'competitive',
         accessType: 'locked',
         fieldType: 'asphalt',
-        genderRestriction: 'male',
         latitude: 32.075,
         longitude: 34.774,
       });

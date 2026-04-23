@@ -120,7 +120,6 @@ describe('RegisterPage', () => {
         avatarColor: 'bg-blue-500',
         position: 'Midfield',
         bio: undefined,
-        gender: undefined,
         birthdate: undefined,
         photoFile: undefined,
         homeLatitude: 32.0853,
