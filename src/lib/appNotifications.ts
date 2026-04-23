@@ -2,7 +2,7 @@ import type { Language, Lobby, TeamColor } from '../types';
 import { requireSupabase } from './supabase';
 import { getTeamColorLabel } from './teamAssignment';
 
-type NotificationKind =
+export type AppNotificationKind =
   | 'friend_request'
   | 'friend_request_accepted'
   | 'friend_request_declined'
@@ -16,14 +16,19 @@ type NotificationKind =
   | 'team_assigned'
   | 'organizer_summary';
 
-const VISIBLE_NOTIFICATION_KINDS: NotificationKind[] = [
+const VISIBLE_NOTIFICATION_KINDS: AppNotificationKind[] = [
   'friend_request',
+  'friend_request_accepted',
+  'friend_request_declined',
+  'friend_joined_lobby',
   'lobby_join_request',
   'lobby_join_request_approved',
   'lobby_join_request_declined',
   'waitlist_spot_opened',
   'lobby_invite',
   'competitive_result',
+  'team_assigned',
+  'organizer_summary',
 ];
 
 type NotificationRow = {
@@ -31,7 +36,7 @@ type NotificationRow = {
   profile_id: string;
   actor_profile_id: string | null;
   lobby_id: string | null;
-  kind: NotificationKind;
+  kind: AppNotificationKind;
   data: Record<string, unknown> | null;
   is_read: boolean;
   created_at: string;
@@ -39,7 +44,7 @@ type NotificationRow = {
 
 export type AppNotification = {
   id: string;
-  kind: NotificationKind;
+  kind: AppNotificationKind;
   title: string;
   message: string;
   isRead: boolean;

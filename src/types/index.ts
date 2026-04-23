@@ -1,4 +1,5 @@
 export type Language = 'he' | 'en';
+export type ThemeMode = 'system' | 'light' | 'dark';
 export type SkillLevel = 'beginner' | 'intermediate' | 'advanced' | 'mixed';
 export type GameType = 'friendly' | 'competitive';
 export type Gender = 'male' | 'female' | 'other';
@@ -10,6 +11,17 @@ export type LobbyAccessType = 'open' | 'locked';
 export type TeamColor = 'blue' | 'yellow' | 'red' | 'green';
 export type LobbyInviteStatus = 'pending' | 'accepted' | 'revoked';
 export type LobbyJoinRequestStatus = 'pending' | 'approved' | 'declined';
+export type SearchHistoryEntryKind = 'query' | 'profile' | 'lobby';
+export type SearchResultKind = 'profile' | 'lobby';
+export type NotificationPreferenceKey =
+  | 'friendRequests'
+  | 'lobbyInvites'
+  | 'joinRequests'
+  | 'waitlist'
+  | 'competitiveResults'
+  | 'organizerReminders';
+
+export type NotificationPreferences = Record<NotificationPreferenceKey, boolean>;
 
 export interface RatingEntry {
   date: string;
@@ -182,6 +194,72 @@ export interface CompetitivePointHistoryEntry {
   points: number;
   createdAt: string;
   notes?: string;
+}
+
+export interface SearchHistoryEntry {
+  id: string;
+  kind: SearchHistoryEntryKind;
+  queryText?: string;
+  targetId?: string;
+  label: string;
+  actedAt: string;
+}
+
+export interface SearchResultProfile {
+  kind: 'profile';
+  id: string;
+  title: string;
+  subtitle?: string;
+  imageUrl?: string;
+  initials: string;
+  avatarColor: string;
+  competitivePoints?: number;
+  isFriend?: boolean;
+  pendingState?: 'sent' | 'received';
+}
+
+export interface SearchResultLobby {
+  kind: 'lobby';
+  id: string;
+  title: string;
+  subtitle?: string;
+  imageUrl?: string;
+  city?: string;
+  gameType: GameType;
+  joinedCount: number;
+  maxPlayers: number;
+  viewerHasAccess: boolean;
+  accessType: LobbyAccessType;
+}
+
+export type SearchResult = SearchResultProfile | SearchResultLobby;
+
+export interface FriendRequestListItem {
+  id: string;
+  user: Player;
+  createdAt?: string;
+}
+
+export interface NetworkRecommendation {
+  profile: Player;
+  score: number;
+  mutualFriends: number;
+  sharedLobbies: number;
+  sameTeamLobbies: number;
+  recentInteractions: number;
+  reasons: string[];
+}
+
+export interface LeaderboardEntry {
+  profile: Player;
+  value: number;
+  rank: number;
+}
+
+export interface LeaderboardStats {
+  allTimePoints: LeaderboardEntry[];
+  competitiveWins: LeaderboardEntry[];
+  highestWinStreak: LeaderboardEntry[];
 }
 
 export interface LobbyTeamAssignment {

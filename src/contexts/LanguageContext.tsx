@@ -1,18 +1,21 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { Language } from '../types';
 import { translations, Translations } from '../i18n/translations';
+import { useAppPreferences } from './AppPreferencesContext';
 
 interface LanguageContextType {
   lang: Language;
   t: Translations;
   toggleLanguage: () => void;
+  setLanguage: (lang: Language) => void;
   isRTL: boolean;
 }
 
 const LanguageContext = createContext<LanguageContextType | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [lang, setLang] = useState<Language>('he');
+  const { language, setLanguage } = useAppPreferences();
+  const lang = language;
   const isRTL = lang === 'he';
   const t = translations[lang];
 
@@ -21,10 +24,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     document.documentElement.lang = lang;
   }, [lang, isRTL]);
 
-  const toggleLanguage = () => setLang(prev => prev === 'he' ? 'en' : 'he');
+  const toggleLanguage = () => setLanguage(lang === 'he' ? 'en' : 'he');
 
   return (
-    <LanguageContext.Provider value={{ lang, t, toggleLanguage, isRTL }}>
+    <LanguageContext.Provider value={{ lang, t, toggleLanguage, setLanguage, isRTL }}>
       {children}
     </LanguageContext.Provider>
   );

@@ -1,4 +1,36 @@
-import type { Lobby, Player, ProfileSkill, RatingEntry, LobbyHistoryEntry, GameType, FieldType, GenderRestriction, Gender, ContributionType, LobbyStatus, LobbyTeam, LobbyTeamAssignment, LobbyResultSummary, LobbyTeamStanding, TeamColor, CompetitivePointHistoryEntry, LobbyAccessType, LobbyInvite, LobbyInviteStatus, LobbyJoinRequest, LobbyJoinRequestStatus, LobbyMessage } from '../types';
+import type {
+  Lobby,
+  Player,
+  ProfileSkill,
+  RatingEntry,
+  LobbyHistoryEntry,
+  GameType,
+  FieldType,
+  GenderRestriction,
+  Gender,
+  ContributionType,
+  LobbyStatus,
+  LobbyTeam,
+  LobbyTeamAssignment,
+  LobbyResultSummary,
+  LobbyTeamStanding,
+  TeamColor,
+  CompetitivePointHistoryEntry,
+  LobbyAccessType,
+  LobbyInvite,
+  LobbyInviteStatus,
+  LobbyJoinRequest,
+  LobbyJoinRequestStatus,
+  LobbyMessage,
+  ThemeMode,
+  NotificationPreferences,
+  SearchHistoryEntry,
+  SearchResult,
+  FriendRequestListItem,
+  NetworkRecommendation,
+  LeaderboardStats,
+  LeaderboardEntry,
+} from '../types';
 import {
   createCompetitiveResultNotifications,
   createLobbyInviteNotification,
@@ -22,6 +54,7 @@ import {
 import { canManageLobby } from './lobbyRoles';
 import { buildBalancedLobbyTeams } from './teamAssignment';
 import { buildWaitlistSyncPlan } from './waitlist';
+import { SEARCH_HISTORY_LIMIT, normalizeNotificationPreferences } from './preferences';
 
 const PROFILE_SELECT_FIELDS = 'id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, gender, birthdate, rating_history, lobby_history';
 const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, min_points_per_game, min_age, max_age, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, gender_restriction, latitude, longitude';
@@ -96,6 +129,26 @@ function isMissingLobbyMessagesTableError(error: unknown) {
 function isMissingLobbyOrganizersTableError(error: unknown) {
   const text = getErrorText(error).toLowerCase();
   return text.includes('lobby_organizers') && (
+    text.includes('does not exist')
+    || text.includes('schema cache')
+    || text.includes('could not find')
+    || text.includes('relation')
+  );
+}
+
+function isMissingUserPreferencesTableError(error: unknown) {
+  const text = getErrorText(error).toLowerCase();
+  return text.includes('user_preferences') && (
+    text.includes('does not exist')
+    || text.includes('schema cache')
+    || text.includes('could not find')
+    || text.includes('relation')
+  );
+}
+
+function isMissingRecentSearchEntriesTableError(error: unknown) {
+  const text = getErrorText(error).toLowerCase();
+  return text.includes('recent_search_entries') && (
     text.includes('does not exist')
     || text.includes('schema cache')
     || text.includes('could not find')
@@ -262,6 +315,30 @@ type LobbyResultReminderLobbyRow = {
   created_by: string;
   game_type: GameType;
   status?: 'active' | 'deleted' | 'expired' | null;
+};
+
+type UserPreferencesRow = {
+  profile_id: string;
+  theme_mode: ThemeMode | null;
+  language: 'he' | 'en' | null;
+  notification_preferences: NotificationPreferences | null;
+};
+
+type RecentSearchEntryRow = {
+  id: string;
+  profile_id: string;
+  kind: 'query' | 'profile' | 'lobby';
+  query_text: string | null;
+  target_id: string | null;
+  label: string;
+  acted_at: string;
+};
+
+type FriendRequestListRow = {
+  from_profile_id: string;
+  to_profile_id: string;
+  status: 'pending' | 'accepted' | 'declined';
+  created_at?: string;
 };
 
 type CompetitiveProfileStats = {
@@ -2655,4 +2732,620 @@ export async function hasAlreadyRated(lobbyId: string, raterProfileId: string): 
   }
 
   return (data ?? []).length > 0;
+}
+
+function mapRecentSearchEntry(row: RecentSearchEntryRow): SearchHistoryEntry {
+  return {
+    id: row.id,
+    kind: row.kind,
+    queryText: row.query_text ?? undefined,
+    targetId: row.target_id ?? undefined,
+    label: row.label,
+    actedAt: row.acted_at,
+  };
+}
+
+export async function fetchUserPreferences(profileId: string): Promise<{
+  themeMode: ThemeMode;
+  language: 'he' | 'en';
+  notificationPreferences: NotificationPreferences;
+} | null> {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from('user_preferences')
+    .select('profile_id, theme_mode, language, notification_preferences')
+    .eq('profile_id', profileId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingUserPreferencesTableError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  const row = data as UserPreferencesRow | null;
+  if (!row) {
+    return null;
+  }
+
+  return {
+    themeMode: row.theme_mode ?? 'system',
+    language: row.language ?? 'he',
+    notificationPreferences: normalizeNotificationPreferences(row.notification_preferences),
+  };
+}
+
+export async function saveUserPreferences(
+  profileId: string,
+  input: {
+    themeMode: ThemeMode;
+    language: 'he' | 'en';
+    notificationPreferences: NotificationPreferences;
+  },
+) {
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('user_preferences')
+    .upsert({
+      profile_id: profileId,
+      theme_mode: input.themeMode,
+      language: input.language,
+      notification_preferences: normalizeNotificationPreferences(input.notificationPreferences),
+    }, { onConflict: 'profile_id' });
+
+  if (error && !isMissingUserPreferencesTableError(error)) {
+    throw error;
+  }
+}
+
+export async function fetchRecentSearchEntries(profileId: string): Promise<SearchHistoryEntry[]> {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from('recent_search_entries')
+    .select('id, profile_id, kind, query_text, target_id, label, acted_at')
+    .eq('profile_id', profileId)
+    .order('acted_at', { ascending: false })
+    .limit(24);
+
+  if (error) {
+    if (isMissingRecentSearchEntriesTableError(error)) {
+      return [];
+    }
+
+    throw error;
+  }
+
+  return ((data ?? []) as RecentSearchEntryRow[]).map(mapRecentSearchEntry);
+}
+
+async function trimRecentSearchEntries(profileId: string) {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from('recent_search_entries')
+    .select('id, kind, acted_at')
+    .eq('profile_id', profileId)
+    .order('acted_at', { ascending: false });
+
+  if (error) {
+    if (isMissingRecentSearchEntriesTableError(error)) {
+      return;
+    }
+
+    throw error;
+  }
+
+  const rows = (data ?? []) as Array<{ id: string; kind: 'query' | 'profile' | 'lobby'; acted_at: string }>;
+  const removableIds = rows
+    .filter((row, index) => {
+      if (row.kind === 'query') {
+        const priorQueries = rows
+          .slice(0, index + 1)
+          .filter((candidate) => candidate.kind === 'query')
+          .length;
+        return priorQueries > SEARCH_HISTORY_LIMIT;
+      }
+
+      const priorOpened = rows
+        .slice(0, index + 1)
+        .filter((candidate) => candidate.kind !== 'query')
+        .length;
+      return priorOpened > SEARCH_HISTORY_LIMIT;
+    })
+    .map((row) => row.id);
+
+  if (removableIds.length === 0) {
+    return;
+  }
+
+  const { error: deleteError } = await supabase
+    .from('recent_search_entries')
+    .delete()
+    .in('id', removableIds);
+
+  if (deleteError && !isMissingRecentSearchEntriesTableError(deleteError)) {
+    throw deleteError;
+  }
+}
+
+export async function saveRecentSearchQuery(profileId: string, query: string) {
+  const normalizedQuery = normalizeText(query);
+  if (!normalizedQuery) {
+    return;
+  }
+
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('recent_search_entries')
+    .insert({
+      profile_id: profileId,
+      kind: 'query',
+      query_text: normalizedQuery,
+      target_id: null,
+      label: normalizedQuery,
+    });
+
+  if (error) {
+    if (isMissingRecentSearchEntriesTableError(error)) {
+      return;
+    }
+
+    throw error;
+  }
+
+  await trimRecentSearchEntries(profileId);
+}
+
+export async function saveRecentSearchTap(
+  profileId: string,
+  input: {
+    kind: 'profile' | 'lobby';
+    targetId: string;
+    label: string;
+  },
+) {
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('recent_search_entries')
+    .insert({
+      profile_id: profileId,
+      kind: input.kind,
+      query_text: null,
+      target_id: input.targetId,
+      label: normalizeText(input.label),
+    });
+
+  if (error) {
+    if (isMissingRecentSearchEntriesTableError(error)) {
+      return;
+    }
+
+    throw error;
+  }
+
+  await trimRecentSearchEntries(profileId);
+}
+
+export async function clearRecentSearchHistory(profileId: string) {
+  const supabase = requireSupabase();
+  const { error } = await supabase
+    .from('recent_search_entries')
+    .delete()
+    .eq('profile_id', profileId);
+
+  if (error && !isMissingRecentSearchEntriesTableError(error)) {
+    throw error;
+  }
+}
+
+export async function fetchSearchResults(query: string, viewerProfileId?: string | null): Promise<SearchResult[]> {
+  const normalizedQuery = normalizeText(query).toLocaleLowerCase();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const currentProfileId = viewerProfileId ?? await fetchCurrentProfileId();
+  const [profiles, lobbies, friendRowsResult] = await Promise.all([
+    fetchProfiles(),
+    fetchLobbies(),
+    currentProfileId
+      ? requireSupabase()
+          .from('friend_requests')
+          .select('from_profile_id, to_profile_id, status')
+          .or(`from_profile_id.eq.${currentProfileId},to_profile_id.eq.${currentProfileId}`)
+      : Promise.resolve({ data: [] as FriendRequestListRow[], error: null }),
+  ]);
+
+  if (friendRowsResult.error) {
+    throw friendRowsResult.error;
+  }
+
+  const friendStatusByProfileId = new Map<string, 'friend' | 'sent' | 'received'>();
+  for (const row of (friendRowsResult.data ?? []) as FriendRequestListRow[]) {
+    const candidateId = row.from_profile_id === currentProfileId ? row.to_profile_id : row.from_profile_id;
+    if (row.status === 'accepted') {
+      friendStatusByProfileId.set(candidateId, 'friend');
+    } else if (row.status === 'pending') {
+      friendStatusByProfileId.set(candidateId, row.from_profile_id === currentProfileId ? 'sent' : 'received');
+    }
+  }
+
+  const profileResults = profiles
+    .filter((profile) => profile.id !== currentProfileId)
+    .filter((profile) => `${profile.name} ${profile.position ?? ''} ${profile.bio ?? ''}`.toLocaleLowerCase().includes(normalizedQuery))
+    .slice(0, 6)
+    .map((profile) => {
+      const status = friendStatusByProfileId.get(profile.id);
+      const pendingState: 'sent' | 'received' | undefined =
+        status === 'sent' ? 'sent' : status === 'received' ? 'received' : undefined;
+
+      return {
+        kind: 'profile' as const,
+        id: profile.id,
+        title: profile.name,
+        subtitle: profile.position ?? profile.bio ?? undefined,
+        imageUrl: profile.photoUrl,
+        initials: profile.initials,
+        avatarColor: profile.avatarColor,
+        competitivePoints: profile.competitivePoints,
+        isFriend: status === 'friend',
+        pendingState,
+      };
+    });
+
+  const lobbyResults = lobbies
+    .filter((lobby) => lobby.status === 'active')
+    .filter((lobby) => `${lobby.title} ${lobby.city} ${lobby.address}`.toLocaleLowerCase().includes(normalizedQuery))
+    .slice(0, 6)
+    .map((lobby) => ({
+      kind: 'lobby' as const,
+      id: lobby.id,
+      title: lobby.title,
+      subtitle: `${lobby.city} · ${new Date(lobby.datetime).toLocaleDateString('en-GB')}`,
+      city: lobby.city,
+      gameType: lobby.gameType,
+      joinedCount: lobby.players.length,
+      maxPlayers: lobby.maxPlayers,
+      viewerHasAccess: lobby.viewerHasAccess,
+      accessType: lobby.accessType ?? 'open',
+    }));
+
+  return [...profileResults, ...lobbyResults];
+}
+
+export async function fetchFriendRequestLists(profileId: string): Promise<{
+  received: FriendRequestListItem[];
+  sent: FriendRequestListItem[];
+}> {
+  const supabase = requireSupabase();
+  const { data, error } = await supabase
+    .from('friend_requests')
+    .select('from_profile_id, to_profile_id, status, created_at')
+    .eq('status', 'pending')
+    .or(`from_profile_id.eq.${profileId},to_profile_id.eq.${profileId}`);
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data ?? []) as FriendRequestListRow[];
+  const players = await fetchProfiles();
+  const playersById = new Map(players.map((player) => [player.id, player]));
+
+  const received = rows
+    .filter((row) => row.to_profile_id === profileId)
+    .map((row) => ({
+      id: row.from_profile_id,
+      user: playersById.get(row.from_profile_id),
+      createdAt: row.created_at,
+    }))
+    .filter((item): item is { id: string; user: Player; createdAt: string | undefined } => Boolean(item.user));
+
+  const sent = rows
+    .filter((row) => row.from_profile_id === profileId)
+    .map((row) => ({
+      id: row.to_profile_id,
+      user: playersById.get(row.to_profile_id),
+      createdAt: row.created_at,
+    }))
+    .filter((item): item is { id: string; user: Player; createdAt: string | undefined } => Boolean(item.user));
+
+  return { received, sent };
+}
+
+export async function fetchNetworkRecommendations(profileId: string): Promise<NetworkRecommendation[]> {
+  const supabase = requireSupabase();
+  const [
+    players,
+    friendRowsResult,
+    membershipRowsResult,
+    viewerTeamRowsResult,
+    teamMemberRowsResult,
+    lobbyRowsResult,
+  ] = await Promise.all([
+    fetchProfiles(),
+    supabase
+      .from('friend_requests')
+      .select('from_profile_id, to_profile_id, status'),
+    supabase
+      .from('lobby_memberships')
+      .select('lobby_id, profile_id, status, created_at')
+      .eq('status', 'joined'),
+    supabase
+      .from('lobby_team_members')
+      .select('lobby_id, lobby_team_id, profile_id')
+      .eq('profile_id', profileId),
+    supabase
+      .from('lobby_team_members')
+      .select('lobby_id, lobby_team_id, profile_id'),
+    supabase
+      .from('lobbies')
+      .select('id, datetime'),
+  ]);
+
+  if (friendRowsResult.error) {
+    throw friendRowsResult.error;
+  }
+  if (membershipRowsResult.error) {
+    throw membershipRowsResult.error;
+  }
+  if (viewerTeamRowsResult.error) {
+    throw viewerTeamRowsResult.error;
+  }
+  if (teamMemberRowsResult.error) {
+    throw teamMemberRowsResult.error;
+  }
+  if (lobbyRowsResult.error) {
+    throw lobbyRowsResult.error;
+  }
+
+  const adjacency = new Map<string, Set<string>>();
+  const sentOrPending = new Set<string>();
+  const receivedPending = new Set<string>();
+  const directFriends = new Set<string>();
+
+  for (const row of (friendRowsResult.data ?? []) as FriendRequestListRow[]) {
+    const fromSet = adjacency.get(row.from_profile_id) ?? new Set<string>();
+    const toSet = adjacency.get(row.to_profile_id) ?? new Set<string>();
+    if (row.status === 'accepted') {
+      fromSet.add(row.to_profile_id);
+      toSet.add(row.from_profile_id);
+      adjacency.set(row.from_profile_id, fromSet);
+      adjacency.set(row.to_profile_id, toSet);
+      if (row.from_profile_id === profileId) {
+        directFriends.add(row.to_profile_id);
+      }
+      if (row.to_profile_id === profileId) {
+        directFriends.add(row.from_profile_id);
+      }
+    } else if (row.status === 'pending') {
+      if (row.from_profile_id === profileId) {
+        sentOrPending.add(row.to_profile_id);
+      }
+      if (row.to_profile_id === profileId) {
+        receivedPending.add(row.from_profile_id);
+      }
+    }
+  }
+
+  const viewerLobbyIds = new Set(
+    ((membershipRowsResult.data ?? []) as MembershipRow[])
+      .filter((row) => row.profile_id === profileId)
+      .map((row) => row.lobby_id),
+  );
+  const lobbyDateById = new Map(
+    ((lobbyRowsResult.data ?? []) as Array<{ id: string; datetime: string }>).map((row) => [row.id, row.datetime]),
+  );
+  const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000);
+
+  const sharedLobbiesByProfile = new Map<string, Set<string>>();
+  const recentInteractionsByProfile = new Map<string, number>();
+
+  for (const row of (membershipRowsResult.data ?? []) as MembershipRow[]) {
+    if (!viewerLobbyIds.has(row.lobby_id) || row.profile_id === profileId) {
+      continue;
+    }
+
+    const current = sharedLobbiesByProfile.get(row.profile_id) ?? new Set<string>();
+    current.add(row.lobby_id);
+    sharedLobbiesByProfile.set(row.profile_id, current);
+
+    const lobbyDatetime = lobbyDateById.get(row.lobby_id);
+    if (lobbyDatetime && new Date(lobbyDatetime).getTime() >= sixtyDaysAgo) {
+      recentInteractionsByProfile.set(row.profile_id, (recentInteractionsByProfile.get(row.profile_id) ?? 0) + 1);
+    }
+  }
+
+  const viewerTeamIds = new Set(
+    ((viewerTeamRowsResult.data ?? []) as LobbyTeamMemberRow[]).map((row) => row.lobby_team_id),
+  );
+  const sameTeamLobbiesByProfile = new Map<string, Set<string>>();
+
+  for (const row of (teamMemberRowsResult.data ?? []) as LobbyTeamMemberRow[]) {
+    if (row.profile_id === profileId || !viewerTeamIds.has(row.lobby_team_id)) {
+      continue;
+    }
+
+    const current = sameTeamLobbiesByProfile.get(row.profile_id) ?? new Set<string>();
+    current.add(row.lobby_id);
+    sameTeamLobbiesByProfile.set(row.profile_id, current);
+
+    const lobbyDatetime = lobbyDateById.get(row.lobby_id);
+    if (lobbyDatetime && new Date(lobbyDatetime).getTime() >= sixtyDaysAgo) {
+      recentInteractionsByProfile.set(row.profile_id, (recentInteractionsByProfile.get(row.profile_id) ?? 0) + 1);
+    }
+  }
+
+  const recommendations: NetworkRecommendation[] = [];
+
+  for (const player of players) {
+    if (
+      player.id === profileId
+      || directFriends.has(player.id)
+      || sentOrPending.has(player.id)
+      || receivedPending.has(player.id)
+    ) {
+      continue;
+    }
+
+    const mutualFriends = [...directFriends].filter((friendId) => adjacency.get(player.id)?.has(friendId)).length;
+    const sharedLobbies = sharedLobbiesByProfile.get(player.id)?.size ?? 0;
+    const sameTeamLobbies = sameTeamLobbiesByProfile.get(player.id)?.size ?? 0;
+    const recentInteractions = recentInteractionsByProfile.get(player.id) ?? 0;
+    const score =
+      (mutualFriends * 30)
+      + (sharedLobbies * 15)
+      + (sameTeamLobbies * 20)
+      + (recentInteractions > 0 ? 20 : 0);
+
+    if (score === 0) {
+      continue;
+    }
+
+    const reasons: string[] = [];
+    if (mutualFriends > 0) {
+      reasons.push(`${mutualFriends} mutual friend${mutualFriends === 1 ? '' : 's'}`);
+    }
+    if (sharedLobbies > 0) {
+      reasons.push(`${sharedLobbies} shared lobb${sharedLobbies === 1 ? 'y' : 'ies'}`);
+    }
+    if (sameTeamLobbies > 0) {
+      reasons.push(`${sameTeamLobbies} same-team match${sameTeamLobbies === 1 ? '' : 'es'}`);
+    }
+    if (recentInteractions > 0) {
+      reasons.push('recent activity');
+    }
+
+    recommendations.push({
+      profile: player,
+      score,
+      mutualFriends,
+      sharedLobbies,
+      sameTeamLobbies,
+      recentInteractions,
+      reasons,
+    });
+  }
+
+  return recommendations.sort((left, right) =>
+    right.score - left.score
+    || left.profile.name.localeCompare(right.profile.name),
+  );
+}
+
+function rankEntries(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  let currentRank = 0;
+  let lastValue: number | null = null;
+  return entries.map((entry, index) => {
+    if (lastValue !== entry.value) {
+      currentRank = index + 1;
+      lastValue = entry.value;
+    }
+
+    return {
+      ...entry,
+      rank: currentRank,
+    };
+  });
+}
+
+export async function fetchLeaderboardStats(): Promise<LeaderboardStats> {
+  const supabase = requireSupabase();
+  const [players, pointEventsResult] = await Promise.all([
+    fetchProfiles(),
+    supabase
+      .from('competitive_point_events')
+      .select('profile_id, lobby_id, rank, created_at'),
+  ]);
+
+  if (pointEventsResult.error) {
+    throw pointEventsResult.error;
+  }
+
+  const playersById = new Map(players.map((player) => [player.id, player]));
+  const pointEvents = (pointEventsResult.data ?? []) as Array<{
+    profile_id: string;
+    lobby_id: string;
+    rank: number;
+    created_at: string;
+  }>;
+
+  const allTimePoints = rankEntries(
+    players
+      .map((player) => ({
+        profile: player,
+        value: player.competitivePoints ?? 0,
+        rank: 0,
+      }))
+      .filter((entry) => entry.value > 0)
+      .sort((left, right) => right.value - left.value || left.profile.name.localeCompare(right.profile.name))
+      .slice(0, 20),
+  );
+
+  const winsByProfileId = new Map<string, number>();
+  for (const event of pointEvents) {
+    if (event.rank === 1) {
+      winsByProfileId.set(event.profile_id, (winsByProfileId.get(event.profile_id) ?? 0) + 1);
+    }
+  }
+
+  const competitiveWins = rankEntries(
+    [...winsByProfileId.entries()]
+      .map(([profileId, value]) => ({
+        profile: playersById.get(profileId),
+        value,
+        rank: 0,
+      }))
+      .filter((entry): entry is { profile: Player; value: number; rank: number } => Boolean(entry.profile))
+      .sort((left, right) => right.value - left.value || left.profile.name.localeCompare(right.profile.name))
+      .slice(0, 20),
+  );
+
+  const eventsByProfileId = new Map<string, Array<{ rank: number; createdAt: string; lobbyId: string }>>();
+  for (const event of pointEvents) {
+    const current = eventsByProfileId.get(event.profile_id) ?? [];
+    current.push({
+      rank: event.rank,
+      createdAt: event.created_at,
+      lobbyId: event.lobby_id,
+    });
+    eventsByProfileId.set(event.profile_id, current);
+  }
+
+  const highestWinStreak = rankEntries(
+    [...eventsByProfileId.entries()]
+      .map(([profileId, events]) => {
+        const orderedEvents = [...events].sort((left, right) =>
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+          || left.lobbyId.localeCompare(right.lobbyId),
+        );
+
+        let currentStreak = 0;
+        let maxStreak = 0;
+        for (const event of orderedEvents) {
+          if (event.rank === 1) {
+            currentStreak += 1;
+            maxStreak = Math.max(maxStreak, currentStreak);
+          } else {
+            currentStreak = 0;
+          }
+        }
+
+        return {
+          profile: playersById.get(profileId),
+          value: maxStreak,
+          rank: 0,
+        };
+      })
+      .filter((entry): entry is { profile: Player; value: number; rank: number } => Boolean(entry.profile) && entry.value > 0)
+      .sort((left, right) => right.value - left.value || left.profile.name.localeCompare(right.profile.name))
+      .slice(0, 20),
+  );
+
+  return {
+    allTimePoints,
+    competitiveWins,
+    highestWinStreak,
+  };
 }
