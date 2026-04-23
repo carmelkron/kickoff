@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import {
-  ArrowRight,
   Clock3,
   Filter,
   Locate,
@@ -138,6 +137,16 @@ function getFieldTypeLabel(fieldType: FieldType | undefined, lang: 'he' | 'en') 
   return 'Indoor';
 }
 
+function getFieldTypeIcon(fieldType: FieldType | undefined) {
+  if (!fieldType) {
+    return null;
+  }
+
+  if (fieldType === 'grass') return '🌿';
+  if (fieldType === 'asphalt') return '⬛';
+  return '🏟️';
+}
+
 function getFriendCountInside(lobby: Lobby, friendIds: string[]) {
   if (friendIds.length === 0) {
     return 0;
@@ -186,10 +195,6 @@ function getRequirements(lobby: Lobby, lang: 'he' | 'en') {
   const items: string[] = [];
 
   if (lobby.gameType === 'competitive') {
-    const average = avgCompetitivePoints(lobby);
-    if (average !== null) {
-      items.push(lang === 'he' ? `ממוצע בפנים ${Math.round(average)} נק'` : `Inside avg ${Math.round(average)} pts`);
-    }
     if (lobby.minRating) {
       items.push(lang === 'he' ? `מינימום ${Math.round(lobby.minRating)} נק'` : `Min ${Math.round(lobby.minRating)} pts`);
     }
@@ -203,6 +208,28 @@ function getRequirements(lobby: Lobby, lang: 'he' | 'en') {
   }
 
   return items;
+}
+
+function getEntryTileContent(lobby: Lobby, lang: 'he' | 'en') {
+  const requirements = getRequirements(lobby, lang);
+  const baseValue =
+    lobby.accessType === 'locked' && !lobby.viewerHasAccess
+      ? (lang === 'he' ? 'באישור מארגן' : 'Approval required')
+      : lobby.price && lobby.price > 0
+        ? `₪${lobby.price}`
+        : (lang === 'he' ? 'פתוח לכולם' : 'Open to all');
+
+  const subvalue =
+    requirements.length > 0
+      ? requirements.join(' • ')
+      : lobby.price && lobby.price > 0
+        ? (lang === 'he' ? 'תשלום במגרש' : 'Paid at the field')
+        : undefined;
+
+  return {
+    value: baseValue,
+    subvalue,
+  };
 }
 
 function HomeLobbyFeedCard({
@@ -224,21 +251,38 @@ function HomeLobbyFeedCard({
   const primaryDisabled = pendingActionId === lobby.id || lobby.viewerJoinRequestStatus === 'pending' || isFull;
   const ageLabel = formatAgeRange(lobby.minAge, lobby.maxAge, lang);
   const fieldTypeLabel = getFieldTypeLabel(lobby.fieldType, lang);
-  const requirements = getRequirements(lobby, lang);
+  const fieldTypeIcon = getFieldTypeIcon(lobby.fieldType);
+  const entryTile = getEntryTileContent(lobby, lang);
   const friendCountInside = getFriendCountInside(lobby, friendIds);
+  const averageCompetitivePoints = avgCompetitivePoints(lobby);
+
+  function handleCardOpen() {
+    onOpen();
+  }
 
   return (
-    <article className="overflow-hidden rounded-[28px] border border-gray-100 bg-white shadow-sm">
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={handleCardOpen}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          handleCardOpen();
+        }
+      }}
+      className="overflow-hidden rounded-[28px] border border-gray-100 bg-white shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-300"
+    >
       <div className="space-y-5 px-5 py-5 sm:px-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge
                 tone={lobby.gameType === 'competitive' ? 'primary' : 'green'}
-                icon={lobby.gameType === 'competitive' ? <Trophy size={11} /> : <Users size={11} />}
+                icon={lobby.gameType === 'competitive' ? <Trophy size={14} /> : <Users size={14} />}
                 label={lobby.gameType === 'competitive' ? (lang === 'he' ? 'תחרותי' : 'Competitive') : (lang === 'he' ? 'ידידותי' : 'Friendly')}
               />
-              {fieldTypeLabel && <StatusBadge tone="gray" label={fieldTypeLabel} />}
+              {fieldTypeLabel && <StatusBadge tone="gray" icon={<span className="text-sm leading-none">{fieldTypeIcon}</span>} label={fieldTypeLabel} shape="tile" />}
               {lobby.accessType === 'locked' && (
                 <StatusBadge tone="gray" icon={<Lock size={11} />} label={lang === 'he' ? 'נעול' : 'Locked'} />
               )}
@@ -257,13 +301,23 @@ function HomeLobbyFeedCard({
             <p className="mt-1 text-sm text-gray-500">{lobby.city}</p>
           </div>
 
-          <div className="rounded-3xl bg-gray-50 px-4 py-3 text-center">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-              {lang === 'he' ? 'שחקנים' : 'Players'}
-            </p>
-            <p className="mt-1 text-xl font-semibold text-gray-900">
-              {lobby.players.length}/{lobby.maxPlayers}
-            </p>
+          <div className="flex items-center gap-2">
+            <div className="rounded-3xl bg-gray-50 px-4 py-3 text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                {lang === 'he' ? 'שחקנים' : 'Players'}
+              </p>
+              <p className="mt-1 text-xl font-semibold text-gray-900">
+                {lobby.players.length}/{lobby.maxPlayers}
+              </p>
+            </div>
+            {lobby.gameType === 'competitive' && averageCompetitivePoints !== null && (
+              <div className="rounded-3xl bg-primary-50 px-4 py-3 text-center">
+                <div className="flex items-center justify-center gap-1 text-primary-700">
+                  <span className="text-xl font-semibold">{Math.round(averageCompetitivePoints)}</span>
+                  <Trophy size={16} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -285,10 +339,10 @@ function HomeLobbyFeedCard({
             subvalue={typeof lobby.distanceKm === 'number' ? `${lobby.distanceKm} ${lang === 'he' ? 'ק"מ' : 'km'}` : undefined}
           />
           <InfoTile
-            icon={<Users size={16} className="text-primary-600" />}
-            title={lang === 'he' ? 'עלות' : 'Price'}
-            value={lobby.price && lobby.price > 0 ? `₪${lobby.price}` : (lang === 'he' ? 'חינם' : 'Free')}
-            subvalue={lobby.accessType === 'locked' && !lobby.viewerHasAccess ? (lang === 'he' ? 'כניסה באישור' : 'Approval required') : undefined}
+            icon={<Lock size={16} className="text-primary-600" />}
+            title={lang === 'he' ? 'תנאי כניסה' : 'Entry requirements'}
+            value={entryTile.value}
+            subvalue={entryTile.subvalue}
           />
         </div>
 
@@ -298,21 +352,6 @@ function HomeLobbyFeedCard({
             <MetaChip label={lang === 'he' ? 'דורש אישור' : 'Approval required'} tone="amber" />
           )}
         </div>
-
-        {requirements.length > 0 && (
-          <div className="rounded-[24px] border border-primary-100 bg-primary-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-700">
-              {lang === 'he' ? 'רמת לובי' : 'Lobby level'}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {requirements.map((item) => (
-                <span key={item} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-primary-700">
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
 
         {lobby.description && (
           <p className="text-sm leading-7 text-gray-600">{lobby.description}</p>
@@ -348,19 +387,14 @@ function HomeLobbyFeedCard({
         <div className="flex flex-col gap-3 sm:flex-row">
           <button
             type="button"
-            onClick={onPrimaryAction}
+            onClick={(event) => {
+              event.stopPropagation();
+              onPrimaryAction();
+            }}
             disabled={primaryDisabled}
             className="flex-1 rounded-full bg-primary-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-55"
           >
             {pendingActionId === lobby.id ? (lang === 'he' ? 'שולח...' : 'Working...') : primaryLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onOpen}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-50 sm:min-w-[168px]"
-          >
-            {lang === 'he' ? 'פתח לובי' : 'Open lobby'}
-            <ArrowRight size={15} className={lang === 'he' ? '' : 'rotate-180'} />
           </button>
         </div>
       </div>
@@ -888,17 +922,44 @@ function StatusBadge({
   label,
   icon,
   tone = 'primary',
+  shape = 'pill',
+  hideLabel = false,
 }: {
   label: string;
   icon?: ReactNode;
-  tone?: 'primary' | 'green' | 'gray';
+  tone?: 'primary' | 'green' | 'gray' | 'amber';
+  shape?: 'pill' | 'tile';
+  hideLabel?: boolean;
 }) {
+  const isLockBadge = label === 'Locked' || label === 'נעול';
+  const isGameTypeBadge =
+    label === 'Competitive'
+    || label === 'Friendly'
+    || label === 'תחרותי'
+    || label === 'ידידותי';
+  const resolvedShape = shape === 'tile' || isLockBadge || isGameTypeBadge ? 'tile' : 'pill';
+  const resolvedHideLabel = hideLabel || isLockBadge;
+  const resolvedTone = isLockBadge ? 'amber' : tone;
   const classes =
-    tone === 'green'
-      ? 'bg-green-100 text-green-700'
-      : tone === 'gray'
-        ? 'bg-gray-100 text-gray-700'
-        : 'bg-primary-100 text-primary-700';
+    resolvedTone === 'green'
+      ? 'bg-green-50 text-green-700'
+      : resolvedTone === 'gray'
+        ? 'bg-gray-50 text-gray-700'
+        : resolvedTone === 'amber'
+          ? 'bg-amber-50 text-amber-700'
+          : 'bg-primary-50 text-primary-700';
+
+  if (resolvedShape === 'tile') {
+    return (
+      <div
+        aria-label={label}
+        className={`min-w-[78px] rounded-3xl px-4 py-3 text-center ${classes}`}
+      >
+        {icon ? <div className="flex items-center justify-center">{icon}</div> : null}
+        {!resolvedHideLabel ? <p className="mt-1 text-sm font-semibold">{label}</p> : null}
+      </div>
+    );
+  }
 
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${classes}`}>

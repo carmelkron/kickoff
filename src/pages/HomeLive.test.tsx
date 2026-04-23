@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -95,7 +95,7 @@ describe('HomeLive', () => {
 
     expect(await screen.findByText('Sunset 6v6')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Open lobby/i }));
+    await user.click(screen.getByRole('button', { name: /Sunset 6v6/i }));
     expect(await screen.findByText('Lobby Details')).toBeInTheDocument();
   });
 
@@ -107,8 +107,8 @@ describe('HomeLive', () => {
     const user = userEvent.setup();
     renderHome();
 
-    await screen.findByText('Sunset 6v6');
-    await user.click(screen.getByRole('button', { name: /Join lobby/i }));
+    const lobbyCard = await screen.findByRole('button', { name: /Sunset 6v6/i });
+    await user.click(within(lobbyCard).getAllByRole('button', { name: /Join lobby/i })[0]);
 
     await waitFor(() => {
       expect(upsertLobbyMembershipMock).toHaveBeenCalledWith('lobby-1', 'viewer-1', 'joined');
@@ -134,8 +134,8 @@ describe('HomeLive', () => {
     const user = userEvent.setup();
     renderHome();
 
-    await screen.findByText('Invite-only Match');
-    await user.click(screen.getByRole('button', { name: /Request access/i }));
+    const lobbyCard = await screen.findByRole('button', { name: /Invite-only Match/i });
+    await user.click(within(lobbyCard).getAllByRole('button', { name: /Request access/i })[0]);
 
     await waitFor(() => {
       expect(requestLobbyAccessMock).toHaveBeenCalledWith('locked-lobby', 'viewer-1');
