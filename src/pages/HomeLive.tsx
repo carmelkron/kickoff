@@ -212,23 +212,20 @@ function getRequirements(lobby: Lobby, lang: 'he' | 'en') {
 
 function getEntryTileContent(lobby: Lobby, lang: 'he' | 'en') {
   const requirements = getRequirements(lobby, lang);
-  const baseValue =
-    lobby.accessType === 'locked' && !lobby.viewerHasAccess
-      ? (lang === 'he' ? 'באישור מארגן' : 'Approval required')
-      : lobby.price && lobby.price > 0
-        ? `₪${lobby.price}`
-        : (lang === 'he' ? 'פתוח לכולם' : 'Open to all');
+  const items: string[] = [];
 
-  const subvalue =
-    requirements.length > 0
-      ? requirements.join(' • ')
-      : lobby.price && lobby.price > 0
-        ? (lang === 'he' ? 'תשלום במגרש' : 'Paid at the field')
-        : undefined;
+  if (lobby.accessType === 'locked' && !lobby.viewerHasAccess) {
+    items.push(lang === 'he' ? 'באישור מארגן' : 'Approval required');
+  }
+
+  if (lobby.price && lobby.price > 0) {
+    items.push(`₪${lobby.price}`);
+  }
+
+  items.push(...requirements);
 
   return {
-    value: baseValue,
-    subvalue,
+    items: items.length > 0 ? items : [lang === 'he' ? 'פתוח לכולם' : 'Open to all'],
   };
 }
 
@@ -284,7 +281,7 @@ function HomeLobbyFeedCard({
               />
               {fieldTypeLabel && <StatusBadge tone="gray" icon={<span className="text-sm leading-none">{fieldTypeIcon}</span>} label={fieldTypeLabel} shape="tile" />}
               {lobby.accessType === 'locked' && (
-                <StatusBadge tone="gray" icon={<Lock size={11} />} label={lang === 'he' ? 'נעול' : 'Locked'} />
+                <StatusBadge tone="gray" icon={<Lock size={16} />} label={lang === 'he' ? 'נעול' : 'Locked'} />
               )}
               {friendCountInside > 0 && (
                 <StatusBadge
@@ -302,7 +299,7 @@ function HomeLobbyFeedCard({
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="rounded-3xl bg-gray-50 px-4 py-3 text-center">
+            <div className="flex h-[88px] w-[104px] flex-col items-center justify-center rounded-3xl bg-gray-50 px-4 py-3 text-center">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
                 {lang === 'he' ? 'שחקנים' : 'Players'}
               </p>
@@ -311,7 +308,7 @@ function HomeLobbyFeedCard({
               </p>
             </div>
             {lobby.gameType === 'competitive' && averageCompetitivePoints !== null && (
-              <div className="rounded-3xl bg-primary-50 px-4 py-3 text-center">
+              <div className="flex h-[88px] w-[104px] flex-col items-center justify-center rounded-3xl bg-primary-50 px-4 py-3 text-center">
                 <div className="flex items-center justify-center gap-1 text-primary-700">
                   <span className="text-xl font-semibold">{Math.round(averageCompetitivePoints)}</span>
                   <Trophy size={16} />
@@ -341,16 +338,12 @@ function HomeLobbyFeedCard({
           <InfoTile
             icon={<Lock size={16} className="text-primary-600" />}
             title={lang === 'he' ? 'תנאי כניסה' : 'Entry requirements'}
-            value={entryTile.value}
-            subvalue={entryTile.subvalue}
+            items={entryTile.items}
           />
         </div>
 
         <div className="flex flex-wrap gap-2">
           {ageLabel && <MetaChip label={ageLabel} />}
-          {lobby.accessType === 'locked' && !lobby.viewerHasAccess && (
-            <MetaChip label={lang === 'he' ? 'דורש אישור' : 'Approval required'} tone="amber" />
-          )}
         </div>
 
         {lobby.description && (
@@ -953,7 +946,7 @@ function StatusBadge({
     return (
       <div
         aria-label={label}
-        className={`min-w-[78px] rounded-3xl px-4 py-3 text-center ${classes}`}
+        className={`flex h-[88px] w-[104px] flex-col items-center justify-center rounded-3xl px-4 py-3 text-center ${classes}`}
       >
         {icon ? <div className="flex items-center justify-center">{icon}</div> : null}
         {!resolvedHideLabel ? <p className="mt-1 text-sm font-semibold">{label}</p> : null}
@@ -988,11 +981,13 @@ function InfoTile({
   title,
   value,
   subvalue,
+  items,
 }: {
   icon: ReactNode;
   title: string;
-  value: string;
+  value?: string;
   subvalue?: string;
+  items?: string[];
 }) {
   return (
     <div className="rounded-[22px] border border-gray-100 bg-gray-50 px-4 py-3">
@@ -1000,8 +995,23 @@ function InfoTile({
         {icon}
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">{title}</p>
       </div>
-      <p className="mt-3 text-sm font-semibold leading-6 text-gray-900">{value}</p>
-      {subvalue && <p className="mt-1 text-xs text-gray-500">{subvalue}</p>}
+      {items && items.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {items.map((item) => (
+            <span
+              key={item}
+              className="rounded-full border border-white bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 shadow-sm"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <>
+          {value ? <p className="mt-3 text-sm font-semibold leading-6 text-gray-900">{value}</p> : null}
+          {subvalue ? <p className="mt-1 text-xs text-gray-500">{subvalue}</p> : null}
+        </>
+      )}
     </div>
   );
 }
