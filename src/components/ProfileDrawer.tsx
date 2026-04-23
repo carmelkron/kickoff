@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { LogOut, Settings, User, Users } from 'lucide-react';
+import { LogOut, Settings, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
@@ -56,20 +56,12 @@ export default function ProfileDrawer({ open, onClose }: Props) {
           {currentUser.bio && (
             <p className="mt-4 line-clamp-2 text-sm leading-6 text-[var(--muted)]">{currentUser.bio}</p>
           )}
-          <div className="mt-4 inline-flex rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-600">
-            {lang === 'he' ? 'פתח פרופיל מלא' : 'Open full profile'}
-          </div>
         </button>
 
         <div className="mt-6 space-y-2">
           <DrawerAction
             icon={<User size={17} />}
             label={lang === 'he' ? 'הפרופיל שלי' : 'My profile'}
-            onClick={() => goTo(`/profile/${currentUser.id}`)}
-          />
-          <DrawerAction
-            icon={<Users size={17} />}
-            label={lang === 'he' ? 'חברים, סטטיסטיקות והיסטוריה' : 'Friends, stats, and history'}
             onClick={() => goTo(`/profile/${currentUser.id}`)}
           />
           <DrawerAction

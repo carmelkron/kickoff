@@ -1,8 +1,6 @@
 import { Globe, MoonStar, SunMedium, UserCog } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useAppPreferences } from '../contexts/AppPreferencesContext';
 import { useLang } from '../contexts/LanguageContext';
-import { useAuth } from '../contexts/SupabaseAuthContext';
 import { NOTIFICATION_PREFERENCE_KEYS } from '../lib/preferences';
 import type { NotificationPreferenceKey, ThemeMode } from '../types';
 
@@ -39,8 +37,6 @@ function getPreferenceLabel(key: NotificationPreferenceKey, lang: 'he' | 'en') {
 }
 
 export default function SettingsPage() {
-  const navigate = useNavigate();
-  const { currentUser } = useAuth();
   const { lang, setLanguage } = useLang();
   const {
     themeMode,
@@ -69,9 +65,6 @@ export default function SettingsPage() {
             <h2 className="text-lg font-semibold text-[var(--text)]">
               {lang === 'he' ? 'מראה' : 'Appearance'}
             </h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              {lang === 'he' ? 'בחר בין בהיר, כהה או לפי המערכת.' : 'Choose between light, dark, or system-driven appearance.'}
-            </p>
           </div>
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
@@ -101,9 +94,6 @@ export default function SettingsPage() {
             <h2 className="text-lg font-semibold text-[var(--text)]">
               {lang === 'he' ? 'שפה' : 'Language'}
             </h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              {lang === 'he' ? 'עברית ואנגלית זמינות כרגע.' : 'Hebrew and English are currently available.'}
-            </p>
           </div>
         </div>
         <div className="mt-5 flex gap-2">
@@ -133,49 +123,30 @@ export default function SettingsPage() {
             <h2 className="text-lg font-semibold text-[var(--text)]">
               {lang === 'he' ? 'ניהול התראות' : 'Notification preferences'}
             </h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              {lang === 'he' ? 'בחר על אילו אירועים תרצה לקבל עדכונים.' : 'Choose which events should stay visible in your notification center.'}
-            </p>
           </div>
         </div>
         <div className="mt-5 space-y-3">
           {NOTIFICATION_PREFERENCE_KEYS.map((key) => (
-            <label key={key} className="flex items-center justify-between gap-4 rounded-[22px] border border-[var(--app-border)] bg-[var(--surface)] px-4 py-3">
+            <label
+              key={key}
+              className="flex items-center justify-between gap-4 rounded-[22px] border border-[var(--app-border)] bg-[var(--surface)] px-4 py-4"
+            >
               <span className="text-sm font-semibold text-[var(--text)]">{getPreferenceLabel(key, lang)}</span>
               <button
                 type="button"
+                dir="ltr"
                 onClick={() => setNotificationPreference(key, !notificationPreferences[key])}
-                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                  notificationPreferences[key] ? 'bg-[var(--accent)]' : 'bg-slate-300'
+                className={`inline-flex h-7 w-12 shrink-0 items-center rounded-full px-1 transition-all ${
+                  notificationPreferences[key]
+                    ? 'justify-end bg-[var(--accent)]'
+                    : 'justify-start bg-slate-300'
                 }`}
                 aria-label={getPreferenceLabel(key, lang)}
               >
-                <span className={`inline-block h-5 w-5 rounded-full bg-white transition-transform ${notificationPreferences[key] ? 'translate-x-[1.35rem]' : 'translate-x-1'}`} />
+                <span className="h-5 w-5 rounded-full bg-white shadow-sm" />
               </button>
             </label>
           ))}
-        </div>
-      </section>
-
-      <section className="rounded-[30px] border border-[var(--app-border)] bg-[var(--panel)] p-5 shadow-[0_24px_70px_rgba(7,19,16,0.05)]">
-        <h2 className="text-lg font-semibold text-[var(--text)]">
-          {lang === 'he' ? 'חשבון' : 'Account'}
-        </h2>
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-          <button
-            type="button"
-            onClick={() => navigate(currentUser ? `/profile/${currentUser.id}/edit` : '/login')}
-            className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white"
-          >
-            {lang === 'he' ? 'עריכת פרופיל' : 'Edit profile'}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(currentUser ? `/profile/${currentUser.id}` : '/login')}
-            className="rounded-full border border-[var(--app-border)] px-5 py-3 text-sm font-semibold text-[var(--text)]"
-          >
-            {lang === 'he' ? 'פתח פרופיל מלא' : 'Open full profile'}
-          </button>
         </div>
       </section>
     </section>
