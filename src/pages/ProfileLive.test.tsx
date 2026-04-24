@@ -101,7 +101,7 @@ describe('ProfileLive', () => {
     expect(screen.getByText('User not found')).toBeInTheDocument();
   });
 
-  it('shows my profile actions, pending requests, friends list, and edit navigation', async () => {
+  it('shows my profile actions, a compact friends preview, and edit navigation', async () => {
     currentUser = makeUser('user-1', {
       name: 'Viewer User',
       pendingRequests: ['user-2'],
@@ -116,14 +116,10 @@ describe('ProfileLive', () => {
     const user = userEvent.setup();
     renderProfile('/profile/user-1');
 
-    expect(await screen.findByText('Friend Requests (1)')).toBeInTheDocument();
-    expect(screen.getByText('Friends (1)')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Connections' })).toBeInTheDocument();
+    expect(screen.getByText('Best Friend')).toBeInTheDocument();
     expect(screen.getByText('My Profile')).toBeInTheDocument();
-
-    await user.click(screen.getAllByRole('button', { name: 'Accept' })[0]);
-    await waitFor(() => {
-      expect(acceptFriendRequestMock).toHaveBeenCalledWith('user-2');
-    });
+    expect(screen.queryByText('Friend Requests (1)')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Edit profile' }));
     expect(await screen.findByText('Edit Profile Page')).toBeInTheDocument();

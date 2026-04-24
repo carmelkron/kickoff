@@ -907,8 +907,8 @@ export default function LobbyDetailLive() {
               </p>
               <p className="mt-1 text-sm text-gray-600">
                 {lang === 'he'
-                  ? 'כולם יכולים לראות את הלובי. כדי להיכנס צריך גישה: משתתפים, מוזמנים, חברים של מי שכבר בפנים, או אישור מהמארגן.'
-                  : 'Everyone can view this lobby. Entering requires access: participants, invited players, people with the share link, friends of current participants, or organizer approval.'}
+                  ? 'רק מוזמנים וחברים של מי שכבר בפנים יכולים להיכנס ישירות. אפשר גם לשלוח בקשת הצטרפות ולחכות לאישור מהמארגנים.'
+                  : 'Only invitees and friends of people already inside can enter directly. You can also send a join request and wait for organizer approval.'}
               </p>
               {(resolvedLobby.viewerIsInvited || resolvedLobby.viewerHasFriendInside) && (
                 <p className="mt-2 text-xs font-medium text-primary-700">

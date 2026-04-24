@@ -119,25 +119,15 @@ export default function ProfileLive() {
     };
   }, [profile?.id]);
 
-  const pendingRequests = useMemo(() => {
-    if (!isMe || !currentUser) {
-      return [];
-    }
-
-    return currentUser.pendingRequests
-      .map((requesterId) => allUsers.find((user) => user.id === requesterId))
-      .filter((user): user is AuthUser => Boolean(user));
-  }, [allUsers, currentUser, isMe]);
-
   const friendsList = useMemo(() => {
-    if (!isMe || !currentUser) {
+    if (!profile) {
       return [];
     }
 
-    return currentUser.friends
+    return profile.friends
       .map((friendId) => allUsers.find((user) => user.id === friendId))
       .filter((user): user is AuthUser => Boolean(user));
-  }, [allUsers, currentUser, isMe]);
+  }, [allUsers, profile]);
 
   type FriendStatus = 'self' | 'friend' | 'sent' | 'pending' | 'none';
 
@@ -186,10 +176,8 @@ export default function ProfileLive() {
     const maxRank = entry.maxRank ?? (entry.rank > 1 ? entry.rank : undefined);
     return maxRank != null && entry.rank === maxRank;
   }).length;
-  const visiblePendingRequests = pendingRequests.slice(0, 3);
   const visibleFriends = friendsList.slice(0, 4);
   const visibleLobbyHistory = lobbyHistory.slice(0, 5);
-  const hasMorePendingRequests = pendingRequests.length > visiblePendingRequests.length;
   const bioNeedsClamp = Boolean(profile?.bio && profile.bio.length > 140);
   const visibleBio =
     profile?.bio && bioNeedsClamp && !showFullBio
@@ -357,7 +345,7 @@ export default function ProfileLive() {
       <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatBox value={profile.gamesPlayed} label={lang === 'he' ? 'משחקים' : 'Games'} />
-          <StatBox value={competitivePointsTotal} label={lang === 'he' ? 'דירוג תחרותי' : 'Comp. rating'} color="text-primary-700" />
+          <StatBox value={friendsList.length} label={lang === 'he' ? 'קשרים' : 'Connections'} color="text-primary-700" />
           <StatBox
             value={competitiveGamesPlayed > 0 ? competitivePointsPerGame.toFixed(1) : '—'}
             label={lang === 'he' ? 'נק׳ למשחק' : 'Pts / game'}
@@ -423,98 +411,44 @@ export default function ProfileLive() {
         </ProfileSection>
       ) : null}
 
-      {isMe && (pendingRequests.length > 0 || friendsList.length > 0) ? (
-        <ProfileSection title={lang === 'he' ? 'קשרים' : 'Connections'}>
-          {pendingRequests.length > 0 ? (
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-blue-900">
-                  {lang === 'he' ? `בקשות חברות (${pendingRequests.length})` : `Friend Requests (${pendingRequests.length})`}
-                </h3>
-                {hasMorePendingRequests ? (
-                  <button
-                    type="button"
-                    onClick={() => navigate('/network')}
-                    className="text-xs font-semibold text-blue-700 hover:underline"
-                  >
-                    {lang === 'he' ? 'לרשת שלי' : 'Open network'}
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                {visiblePendingRequests.map((requester) => (
-                  <div key={requester.id} className="flex items-center gap-3 rounded-2xl bg-white px-3 py-2">
-                    {requester.photoUrl ? (
-                      <img src={requester.photoUrl} alt={requester.name} className="h-9 w-9 shrink-0 rounded-full object-cover" />
-                    ) : (
-                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${requester.avatarColor} text-xs font-bold text-white`}>
-                        {requester.initials}
-                      </div>
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">{requester.name}</span>
-                    <button
-                      onClick={() => void runAction(`accept-${requester.id}`, () => acceptFriendRequest(requester.id))}
-                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
-                    >
-                      {lang === 'he' ? 'אשר' : 'Accept'}
-                    </button>
-                    <button
-                      onClick={() => void runAction(`decline-${requester.id}`, () => declineFriendRequest(requester.id))}
-                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
-                    >
-                      {lang === 'he' ? 'דחה' : 'Decline'}
-                    </button>
+      {friendsList.length > 0 ? (
+        <ProfileSection
+          title={lang === 'he' ? 'קשרים' : 'Connections'}
+          action={(
+            <button
+              type="button"
+              onClick={() => navigate(`/profile/${profile.id}/friends`)}
+              className="text-xs font-semibold text-primary-600 hover:underline"
+            >
+              {lang === 'he' ? 'צפה בהכל' : 'View all'}
+            </button>
+          )}
+        >
+          <div className="space-y-2">
+            {visibleFriends.map((friend) => (
+              <button
+                key={friend.id}
+                onClick={() => navigate(`/profile/${friend.id}`)}
+                className="flex w-full items-center gap-3 rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2 text-start transition-colors hover:bg-gray-100"
+              >
+                {friend.photoUrl ? (
+                  <img src={friend.photoUrl} alt={friend.name} className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                ) : (
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${friend.avatarColor} text-xs font-bold text-white`}>
+                    {friend.initials}
                   </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {friendsList.length > 0 ? (
-            <div className={`${pendingRequests.length > 0 ? 'mt-4 ' : ''}rounded-2xl border border-gray-100 bg-gray-50 p-4`}>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-semibold text-gray-900">
-                  {lang === 'he' ? `חברים (${friendsList.length})` : `Friends (${friendsList.length})`}
-                </h3>
-                {friendsList.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/profile/${profile.id}/friends`)}
-                    className="text-xs font-semibold text-primary-600 hover:underline"
-                  >
-                    {lang === 'he' ? 'צפה בהכל' : 'View all'}
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="space-y-2">
-                {visibleFriends.map((friend) => (
-                  <button
-                    key={friend.id}
-                    onClick={() => navigate(`/profile/${friend.id}`)}
-                    className="flex w-full items-center gap-3 rounded-2xl bg-white px-3 py-2 text-start transition-colors hover:bg-gray-100"
-                  >
-                    {friend.photoUrl ? (
-                      <img src={friend.photoUrl} alt={friend.name} className="h-9 w-9 shrink-0 rounded-full object-cover" />
-                    ) : (
-                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${friend.avatarColor} text-xs font-bold text-white`}>
-                        {friend.initials}
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-800">{friend.name}</p>
-                      {friend.position ? <p className="text-xs text-gray-400">{friend.position}</p> : null}
-                    </div>
-                    <p className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-primary-700">
-                      <Trophy size={14} />
-                      {friend.competitivePoints ?? 0}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-gray-800">{friend.name}</p>
+                  {friend.position ? <p className="text-xs text-gray-400">{friend.position}</p> : null}
+                </div>
+                <p className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-primary-700">
+                  <Trophy size={14} />
+                  {friend.competitivePoints ?? 0}
+                </p>
+              </button>
+            ))}
+          </div>
         </ProfileSection>
       ) : null}
 

@@ -213,8 +213,12 @@ function getEntryTileContent(lobby: Lobby, lang: 'he' | 'en') {
   const requirements = getRequirements(lobby, lang);
   const items: string[] = [];
 
-  if (lobby.accessType === 'locked' && !lobby.viewerHasAccess) {
-    items.push(lang === 'he' ? 'באישור מארגן' : 'Approval required');
+  if (lobby.accessType === 'locked') {
+    items.push(
+      lobby.viewerHasAccess
+        ? (lang === 'he' ? 'הזמנה או חבר בפנים' : 'Invite or friend inside')
+        : (lang === 'he' ? 'באישור מארגן' : 'Approval required'),
+    );
   }
 
   if (lobby.price && lobby.price > 0) {

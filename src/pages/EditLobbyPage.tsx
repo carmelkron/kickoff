@@ -266,9 +266,6 @@ export default function EditLobbyPage() {
           >
             <div>
               <h2 className="text-base font-semibold text-gray-900">{lang === 'he' ? 'הגדרות אופציונליות' : 'Optional settings'}</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                {lang === 'he' ? 'פתח רק אם צריך להוסיף עוד פרטים.' : 'Open only if you want to add more details.'}
-              </p>
             </div>
             {showOptionalSettings ? <ChevronUp size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
           </button>
@@ -306,7 +303,7 @@ export default function EditLobbyPage() {
                 <Input type="number" min="0" value={form.price} onChange={setField('price')} placeholder={t.create.pricePlaceholder} />
               </Field>
 
-              <Field label={t.create.description}>
+              <Field label={lang === 'he' ? 'תיאור' : 'Description'}>
                 <textarea
                   value={form.description}
                   onChange={setField('description')}
