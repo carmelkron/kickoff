@@ -20,7 +20,6 @@ function getThemeLabel(themeMode: ThemeMode, lang: 'he' | 'en') {
 
 function getPreferenceLabel(key: NotificationPreferenceKey, lang: 'he' | 'en') {
   if (lang === 'he') {
-    if (key === 'friendRequests') return 'בקשות חברות ועדכוני חברים';
     if (key === 'lobbyInvites') return 'הזמנות ללובים';
     if (key === 'joinRequests') return 'בקשות כניסה ואישורים';
     if (key === 'waitlist') return 'רשימות המתנה';
@@ -28,7 +27,6 @@ function getPreferenceLabel(key: NotificationPreferenceKey, lang: 'he' | 'en') {
     return 'תזכורות מארגן';
   }
 
-  if (key === 'friendRequests') return 'Friend requests and friend updates';
   if (key === 'lobbyInvites') return 'Lobby invites';
   if (key === 'joinRequests') return 'Join requests and approvals';
   if (key === 'waitlist') return 'Waitlist updates';

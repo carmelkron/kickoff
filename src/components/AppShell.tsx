@@ -27,6 +27,7 @@ export default function AppShell() {
   const { lang } = useLang();
   const { currentUser } = useAuth();
   const { unreadCount } = useNotificationCenter();
+  const pendingNetworkRequests = currentUser?.pendingRequests.length ?? 0;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [pendingResultReminder, setPendingResultReminder] = useState<PendingLobbyResultReminder | null>(null);
@@ -152,7 +153,10 @@ export default function AppShell() {
           >
             <Bell size={18} />
             {unreadCount > 0 && (
-              <span className="absolute -end-1 -top-1 min-w-[18px] rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-[18px] text-white">
+              <span
+                aria-label={lang === 'he' ? `${unreadCount} התראות לא נקראו` : `${unreadCount} unread notifications`}
+                className="absolute -end-1 -top-1 min-w-[18px] rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-[18px] text-white"
+              >
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
@@ -201,13 +205,21 @@ export default function AppShell() {
               key={to}
               to={to}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-semibold transition-colors ${
+                `relative flex flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-semibold transition-colors ${
                   isActive
                     ? 'bg-primary-50 text-primary-600'
                     : 'text-[var(--muted)]'
                 }`
               }
             >
+              {key === 'network' && pendingNetworkRequests > 0 && (
+                <span
+                  aria-label={lang === 'he' ? `${pendingNetworkRequests} בקשות חברות ממתינות` : `${pendingNetworkRequests} pending friend requests`}
+                  className="absolute end-1 top-1 min-w-[18px] rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-[18px] text-white"
+                >
+                  {pendingNetworkRequests > 9 ? '9+' : pendingNetworkRequests}
+                </span>
+              )}
               <Icon size={18} />
               <span>{getNavLabel(key, lang)}</span>
             </NavLink>

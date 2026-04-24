@@ -5,7 +5,6 @@ export const LOCAL_SEARCH_HISTORY_KEY = 'kickoff:search-history';
 export const SEARCH_HISTORY_LIMIT = 8;
 
 export const NOTIFICATION_PREFERENCE_KEYS: NotificationPreferenceKey[] = [
-  'friendRequests',
   'lobbyInvites',
   'joinRequests',
   'waitlist',
@@ -14,7 +13,6 @@ export const NOTIFICATION_PREFERENCE_KEYS: NotificationPreferenceKey[] = [
 ];
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
-  friendRequests: true,
   lobbyInvites: true,
   joinRequests: true,
   waitlist: true,
@@ -62,10 +60,6 @@ export function mapNotificationKindToPreference(
     | 'team_assigned'
     | 'organizer_summary',
 ): NotificationPreferenceKey {
-  if (kind === 'friend_request' || kind === 'friend_request_accepted' || kind === 'friend_request_declined' || kind === 'friend_joined_lobby') {
-    return 'friendRequests';
-  }
-
   if (kind === 'lobby_invite') {
     return 'lobbyInvites';
   }

@@ -5,18 +5,11 @@ import { useAppPreferences } from '../contexts/AppPreferencesContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import {
   deleteAllNotifications,
-  deleteNotification,
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   type AppNotification,
 } from '../lib/appNotifications';
-import {
-  approveLobbyJoinRequest,
-  declineLobbyJoinRequest,
-  passLobbyWaitlistSpot,
-  upsertLobbyMembership,
-} from '../lib/appData';
 import { mapNotificationKindToPreference } from '../lib/preferences';
 import { requireSupabase } from '../lib/supabase';
 
@@ -25,23 +18,15 @@ export function useNotificationCenter() {
   const navigate = useNavigate();
   const { lang } = useLang();
   const { notificationPreferences } = useAppPreferences();
-  const { currentUser, acceptFriendRequest, declineFriendRequest } = useAuth();
+  const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [notificationActionError, setNotificationActionError] = useState('');
-  const [busyNotificationId, setBusyNotificationId] = useState('');
-  const [deletingNotificationId, setDeletingNotificationId] = useState('');
   const [clearingNotifications, setClearingNotifications] = useState(false);
-  const [handledRequestActions, setHandledRequestActions] = useState<Record<string, 'accept' | 'decline'>>({});
-  const [handledLobbyRequestActions, setHandledLobbyRequestActions] = useState<Record<string, 'accept' | 'decline'>>({});
-  const [handledWaitlistActions, setHandledWaitlistActions] = useState<Record<string, 'join' | 'pass'>>({});
 
   useEffect(() => {
     if (!currentUser) {
       setNotifications([]);
-      setHandledRequestActions({});
-      setHandledLobbyRequestActions({});
-      setHandledWaitlistActions({});
       return;
     }
 
@@ -143,19 +128,6 @@ export function useNotificationCenter() {
     await refreshNotifications();
   }
 
-  async function handleDeleteNotification(notificationId: string) {
-    setDeletingNotificationId(notificationId);
-    setNotificationActionError('');
-    try {
-      await deleteNotification(notificationId);
-      setNotifications((current) => current.filter((notification) => notification.id !== notificationId));
-    } catch (error) {
-      setNotificationActionError(error instanceof Error ? error.message : 'Delete failed');
-    } finally {
-      setDeletingNotificationId('');
-    }
-  }
-
   async function handleClearAllNotifications() {
     if (!currentUser) {
       return;
@@ -166,9 +138,6 @@ export function useNotificationCenter() {
     try {
       await deleteAllNotifications(currentUser.id);
       setNotifications([]);
-      setHandledRequestActions({});
-      setHandledLobbyRequestActions({});
-      setHandledWaitlistActions({});
     } catch (error) {
       setNotificationActionError(error instanceof Error ? error.message : 'Delete failed');
     } finally {
@@ -182,88 +151,13 @@ export function useNotificationCenter() {
       await refreshNotifications();
     }
 
-    if (notification.profileId) {
-      navigate(`/profile/${notification.profileId}`);
-      return;
-    }
-
     if (notification.lobbyId) {
       navigate(`/lobby/${notification.lobbyId}`);
-    }
-  }
-
-  async function handleNotificationFriendRequest(action: 'accept' | 'decline', notification: AppNotification) {
-    if (!notification.requesterId) {
       return;
     }
 
-    setBusyNotificationId(notification.id);
-    setNotificationActionError('');
-    try {
-      if (action === 'accept') {
-        await acceptFriendRequest(notification.requesterId);
-      } else {
-        await declineFriendRequest(notification.requesterId);
-      }
-      setHandledRequestActions((current) => ({
-        ...current,
-        [notification.id]: action,
-      }));
-      await refreshNotifications();
-    } catch (error) {
-      setNotificationActionError(error instanceof Error ? error.message : 'Action failed');
-    } finally {
-      setBusyNotificationId('');
-    }
-  }
-
-  async function handleLobbyJoinRequest(action: 'accept' | 'decline', notification: AppNotification) {
-    if (!currentUser || !notification.lobbyId || !notification.requesterId) {
-      return;
-    }
-
-    setBusyNotificationId(notification.id);
-    setNotificationActionError('');
-    try {
-      if (action === 'accept') {
-        await approveLobbyJoinRequest(notification.lobbyId, notification.requesterId, currentUser.id);
-      } else {
-        await declineLobbyJoinRequest(notification.lobbyId, notification.requesterId, currentUser.id);
-      }
-      setHandledLobbyRequestActions((current) => ({
-        ...current,
-        [notification.id]: action,
-      }));
-      await refreshNotifications();
-    } catch (error) {
-      setNotificationActionError(error instanceof Error ? error.message : 'Action failed');
-    } finally {
-      setBusyNotificationId('');
-    }
-  }
-
-  async function handleWaitlistNotificationAction(action: 'join' | 'pass', notification: AppNotification) {
-    if (!currentUser || !notification.lobbyId) {
-      return;
-    }
-
-    setBusyNotificationId(notification.id);
-    setNotificationActionError('');
-    try {
-      if (action === 'join') {
-        await upsertLobbyMembership(notification.lobbyId, currentUser.id, 'joined');
-      } else {
-        await passLobbyWaitlistSpot(notification.lobbyId, currentUser.id);
-      }
-      setHandledWaitlistActions((current) => ({
-        ...current,
-        [notification.id]: action,
-      }));
-      await refreshNotifications();
-    } catch (error) {
-      setNotificationActionError(error instanceof Error ? error.message : 'Action failed');
-    } finally {
-      setBusyNotificationId('');
+    if (notification.profileId) {
+      navigate(`/profile/${notification.profileId}`);
     }
   }
 
@@ -272,19 +166,10 @@ export function useNotificationCenter() {
     unreadCount,
     loadingNotifications,
     notificationActionError,
-    busyNotificationId,
-    deletingNotificationId,
     clearingNotifications,
-    handledRequestActions,
-    handledLobbyRequestActions,
-    handledWaitlistActions,
     refreshNotifications,
     handleMarkAllRead,
-    handleDeleteNotification,
     handleClearAllNotifications,
     openNotification,
-    handleNotificationFriendRequest,
-    handleLobbyJoinRequest,
-    handleWaitlistNotificationAction,
   };
 }

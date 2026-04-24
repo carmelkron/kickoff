@@ -11,6 +11,7 @@ let currentUser: {
   name: string;
   initials: string;
   avatarColor: string;
+  pendingRequests: string[];
   photoUrl?: string;
 } | null = null;
 
@@ -72,6 +73,7 @@ describe('AppShell', () => {
       name: 'Viewer User',
       initials: 'VU',
       avatarColor: 'bg-blue-500',
+      pendingRequests: ['user-2', 'user-3'],
     };
     fetchPendingLobbyResultRemindersMock.mockReset().mockResolvedValue([]);
   });
@@ -91,7 +93,8 @@ describe('AppShell', () => {
     const user = userEvent.setup();
     renderShell();
 
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByLabelText('3 unread notifications')).toBeInTheDocument();
+    expect(screen.getByLabelText('2 pending friend requests')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Notifications/i }));
     expect(await screen.findByText('Notifications Route')).toBeInTheDocument();
   });

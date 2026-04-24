@@ -14,31 +14,21 @@ vi.mock('../hooks/useNotificationCenter', () => ({
     notifications: [
       {
         id: 'notif-1',
-        kind: 'friend_request',
-        title: 'Friend request',
-        message: 'Dana sent you a request',
+        kind: 'lobby_invite',
+        title: 'Locked lobby invite',
+        message: 'Dana invited you to Sunset Match',
         isRead: false,
         createdAt: '2026-04-23T10:00:00.000Z',
-        profileId: 'user-2',
-        requesterId: 'user-2',
+        lobbyId: 'lobby-1',
       },
     ],
     unreadCount: 1,
     loadingNotifications: false,
     notificationActionError: '',
-    busyNotificationId: '',
-    deletingNotificationId: '',
     clearingNotifications: false,
-    handledRequestActions: {},
-    handledLobbyRequestActions: {},
-    handledWaitlistActions: {},
     openNotification: vi.fn(),
     handleMarkAllRead: vi.fn(),
-    handleDeleteNotification: vi.fn(),
     handleClearAllNotifications: vi.fn(),
-    handleNotificationFriendRequest: vi.fn(),
-    handleLobbyJoinRequest: vi.fn(),
-    handleWaitlistNotificationAction: vi.fn(),
   }),
 }));
 
@@ -50,8 +40,9 @@ describe('NotificationsPage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Everything that needs your attention')).toBeInTheDocument();
-    expect(screen.getByText('Friend request')).toBeInTheDocument();
-    expect(screen.getByText('Dana sent you a request')).toBeInTheDocument();
+    expect(screen.getAllByText('Notifications')).toHaveLength(2);
+    expect(screen.getByText('Locked lobby invite')).toBeInTheDocument();
+    expect(screen.getByText('Dana invited you to Sunset Match')).toBeInTheDocument();
+    expect(screen.queryByText('Everything that needs your attention')).not.toBeInTheDocument();
   });
 });

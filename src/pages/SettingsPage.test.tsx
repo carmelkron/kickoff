@@ -20,7 +20,6 @@ vi.mock('../contexts/AppPreferencesContext', () => ({
     themeMode: 'system',
     setThemeMode: (...args: unknown[]) => setThemeModeMock(...args),
     notificationPreferences: {
-      friendRequests: true,
       lobbyInvites: true,
       joinRequests: true,
       waitlist: true,

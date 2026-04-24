@@ -17,7 +17,6 @@ export type NetworkRecommendationBucket =
   | 'near_you'
   | 'people_you_may_know';
 export type NotificationPreferenceKey =
-  | 'friendRequests'
   | 'lobbyInvites'
   | 'joinRequests'
   | 'waitlist'

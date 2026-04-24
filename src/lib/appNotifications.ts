@@ -16,11 +16,7 @@ export type AppNotificationKind =
   | 'team_assigned'
   | 'organizer_summary';
 
-const VISIBLE_NOTIFICATION_KINDS: AppNotificationKind[] = [
-  'friend_request',
-  'friend_request_accepted',
-  'friend_request_declined',
-  'friend_joined_lobby',
+const NOTIFICATION_CENTER_KINDS: AppNotificationKind[] = [
   'lobby_join_request',
   'lobby_join_request_approved',
   'lobby_join_request_declined',
@@ -347,7 +343,7 @@ export async function fetchNotifications(profileId: string, lang: Language): Pro
     .from('notifications')
     .select('id, profile_id, actor_profile_id, lobby_id, kind, data, is_read, created_at')
     .eq('profile_id', profileId)
-    .in('kind', VISIBLE_NOTIFICATION_KINDS)
+    .in('kind', NOTIFICATION_CENTER_KINDS)
     .order('created_at', { ascending: false })
     .limit(30);
 
