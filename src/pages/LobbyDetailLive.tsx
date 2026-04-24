@@ -982,31 +982,18 @@ export default function LobbyDetailLive() {
       )}
 
       {activeTab === 'manage' && isCreator && (
-        <ManageSection
-          title={lang === 'he' ? 'מארגנים משניים' : 'Secondary organizers'}
-          description={lang === 'he'
-            ? 'כאן אפשר להוסיף או להסיר שותפים לניהול הלובי.'
-            : 'Add or remove management partners for this lobby here.'}
-          badge={lang === 'he' ? `${secondaryOrganizerPlayers.length} פעילים` : `${secondaryOrganizerPlayers.length} active`}
-        >
-          <div className="hidden">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">
-                {lang === 'he' ? 'מארגנים משניים' : 'Secondary organizers'}
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                {lang === 'he'
-                  ? 'מארגנים משניים יכולים לאשר בקשות כניסה, לסדר הרכבים, ולדווח תוצאות בסוף המשחק.'
-                  : 'Secondary organizers can approve access requests, manage teams, and report results after the match.'}
-              </p>
-            </div>
+        <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-gray-900">
+              {lang === 'he' ? 'מארגנים משניים' : 'Secondary organizers'}
+            </h2>
             <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
               {lang === 'he' ? `${secondaryOrganizerPlayers.length} פעילים` : `${secondaryOrganizerPlayers.length} active`}
             </span>
           </div>
 
           {secondaryOrganizerPlayers.length > 0 ? (
-            <div className="mt-4 space-y-2">
+            <div className="space-y-2">
               {secondaryOrganizerPlayers.map((player) => (
                 <div key={player.id} className="flex items-center gap-3 rounded-2xl bg-gray-50 px-3 py-2">
                   {player.photoUrl ? (
@@ -1018,9 +1005,7 @@ export default function LobbyDetailLive() {
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-gray-800">{player.name}</p>
-                    <p className="text-xs text-gray-400">
-                      {lang === 'he' ? 'יכול/ה לנהל בקשות, הרכבים ותוצאות' : 'Can manage requests, teams, and results'}
-                    </p>
+                    {player.position ? <p className="text-xs text-gray-400">{player.position}</p> : null}
                   </div>
                   <button
                     type="button"
@@ -1033,17 +1018,15 @@ export default function LobbyDetailLive() {
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="mt-4 rounded-2xl bg-gray-50 px-3 py-3 text-sm text-gray-500">
-              {lang === 'he'
-                ? 'עדיין לא הוגדרו מארגנים משניים ללובי הזה.'
-                : 'No secondary organizers were assigned to this lobby yet.'}
-            </p>
-          )}
+          ) : null}
 
-          <div className="mt-4 space-y-2">
-            {organizerCandidatePlayers.length > 0 ? (
-              organizerCandidatePlayers.map((player) => (
+          {secondaryOrganizerPlayers.length > 0 && organizerCandidatePlayers.length > 0 ? (
+            <div className="my-4 border-t border-gray-100" />
+          ) : null}
+
+          {organizerCandidatePlayers.length > 0 ? (
+            <div className="space-y-2">
+              {organizerCandidatePlayers.map((player) => (
                 <div key={player.id} className="flex items-center gap-3 rounded-2xl border border-gray-100 px-3 py-2">
                   {player.photoUrl ? (
                     <img src={player.photoUrl} alt={player.name} className="h-9 w-9 rounded-full object-cover" />
@@ -1054,9 +1037,7 @@ export default function LobbyDetailLive() {
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-gray-800">{player.name}</p>
-                    <p className="text-xs text-gray-400">
-                      {lang === 'he' ? 'משתתף/ת בלובי כרגע' : 'Currently joined in this lobby'}
-                    </p>
+                    {player.position ? <p className="text-xs text-gray-400">{player.position}</p> : null}
                   </div>
                   <button
                     type="button"
@@ -1067,51 +1048,29 @@ export default function LobbyDetailLive() {
                     {lang === 'he' ? 'הפוך למארגן משני' : 'Make organizer'}
                   </button>
                 </div>
-              ))
-            ) : (
-              <p className="rounded-2xl bg-gray-50 px-3 py-3 text-sm text-gray-500">
-                {lang === 'he'
-                  ? 'אין כרגע משתתפים נוספים שאפשר להפוך למארגנים משניים.'
-                  : 'There are no other joined players available to promote right now.'}
-              </p>
-            )}
-          </div>
-        </ManageSection>
+              ))}
+            </div>
+          ) : null}
+        </div>
       )}
 
       {activeTab === 'manage' && canManageCurrentLobby && (
-        <ManageSection
-          title={lang === 'he' ? 'הרכבים' : 'Lineups'}
-          description={teams.length > 0
-            ? (lang === 'he' ? 'ההרכבים כבר נוצרו ואפשר לחדד אותם מכאן.' : 'The lineups are ready and can be fine-tuned here.')
-            : (lang === 'he' ? 'כשהלובי מלא וכל העמדות מוגדרות, אפשר ליצור כאן הרכבים.' : 'Once the lobby is full and every position is set, you can create lineups here.')}
-          badge={teams.length > 0 ? `${teams.length}` : undefined}
-          defaultOpen={canGenerateTeams || teams.length > 0}
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-primary-800">
-                {lang === 'he' ? 'הרכבים ללובי' : 'Lobby lineups'}
-              </p>
-              <p className="mt-1 text-xs text-primary-700">
-                {teams.length > 0
-                  ? (lang === 'he' ? 'ההרכבים כבר ננעלו ונשלחה התראה לכל המשתתפים.' : 'Teams are locked and all participants were notified.')
-                  : canGenerateTeams
-                    ? (lang === 'he' ? 'הלובי מלא. אפשר ליצור עכשיו קבוצות מאוזנות ולשלוח לכולם שיבוץ.' : 'The lobby is full. You can create balanced teams now and notify everyone.')
-                    : (lang === 'he' ? 'כדי ליצור קבוצות צריך לובי מלא עם כל העמדות מוגדרות.' : 'Teams can be created once the lobby is full and every player has a preferred position.')}
-              </p>
-            </div>
+        <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-gray-900">
+              {lang === 'he' ? 'הרכבים' : 'Lineups'}
+            </h2>
             <button
               onClick={() => void handleGenerateTeams()}
               disabled={!canGenerateTeams || generatingTeams}
-              className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+              className="rounded-xl bg-primary-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
             >
               {generatingTeams
                 ? (lang === 'he' ? 'יוצר הרכבים...' : 'Creating teams...')
                 : (lang === 'he' ? 'צור הרכבים' : 'Create teams')}
             </button>
           </div>
-        </ManageSection>
+        </div>
       )}
 
       {activeTab === 'manage' && isCreator && resolvedLobby.accessType === 'locked' && (
@@ -1158,7 +1117,10 @@ export default function LobbyDetailLive() {
                         : (lang === 'he' ? 'הזמנה פעילה' : 'Invitation pending')}
                     </p>
                   </div>
-                  <span className="text-xs font-semibold text-primary-700">🏆 {invite.invitedPlayer.competitivePoints ?? 0}</span>
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-700">
+                    <Trophy size={13} className="text-primary-600" />
+                    {invite.invitedPlayer.competitivePoints ?? 0}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1637,7 +1599,10 @@ export default function LobbyDetailLive() {
                           {lang === 'he' ? 'נבחר' : 'Selected'}
                         </span>
                       )}
-                      <span className="text-xs font-semibold text-primary-700">🏆 {player.competitivePoints ?? 0}</span>
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-700">
+                        <Trophy size={13} className="text-primary-600" />
+                        {player.competitivePoints ?? 0}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -1700,7 +1665,10 @@ export default function LobbyDetailLive() {
                 {player.position && <p className="text-xs text-gray-400">{getPreferredPositionLabel(player.position, lang)}</p>}
               </div>
               <div className="shrink-0">
-                <p className="text-sm font-semibold text-primary-700">🏆 {player.competitivePoints ?? 0}</p>
+                <p className="inline-flex items-center gap-1 text-sm font-semibold text-primary-700">
+                  <Trophy size={14} className="text-primary-600" />
+                  {player.competitivePoints ?? 0}
+                </p>
                 <p className="text-xs text-gray-400 text-end">
                   {player.gamesPlayed} {t.lobby.gamesPlayed}
                 </p>
@@ -1748,7 +1716,10 @@ export default function LobbyDetailLive() {
                     </span>
                   )}
                 </div>
-                <span className="text-xs font-semibold text-primary-700">🏆 {player.competitivePoints ?? 0}</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary-700">
+                  <Trophy size={13} className="text-primary-600" />
+                  {player.competitivePoints ?? 0}
+                </span>
               </div>
             ))}
           </div>
