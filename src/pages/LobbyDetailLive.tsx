@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, LoaderCircle, Lock, MapPin, Pencil, Share2, ShieldCheck, Trash2, Trophy, Users } from 'lucide-react';
+import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, LoaderCircle, Lock, MapPin, Pencil, Share2, Trash2, Trophy, Users } from 'lucide-react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
@@ -19,6 +19,7 @@ import { getPreferredPositionLabel, getTeamColorLabel, normalizePreferredPositio
 import { calculateCompetitiveStandings } from '../lib/competitiveResults';
 
 type MyStatus = 'none' | 'joined' | 'waitlisted' | 'pending_confirm';
+type LobbyTab = 'overview' | 'players' | 'chat' | 'manage';
 type LobbyDuplicationSummary = {
   sourceLobbyTitle: string;
   reinviteAttempted: boolean;
@@ -103,6 +104,9 @@ export default function LobbyDetailLive() {
   const [shareLink, setShareLink] = useState('');
   const [shareFeedback, setShareFeedback] = useState('');
   const [sharingLobby, setSharingLobby] = useState(false);
+  const [activeTab, setActiveTab] = useState<LobbyTab>('overview');
+  const [showMoreDetails, setShowMoreDetails] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(false);
 
   const shareTokenFromUrl = new URLSearchParams(location.search).get('share');
   const duplicationSummary = (location.state as { duplicationSummary?: LobbyDuplicationSummary } | null)?.duplicationSummary;
@@ -191,6 +195,14 @@ export default function LobbyDetailLive() {
     setShowResultModal(true);
   }, [canSubmitResult, resultModalDismissed, showResultModal]);
 
+  const canManageCurrentLobby = lobby ? canManageLobby(lobby, currentUser?.id) : false;
+
+  useEffect(() => {
+    if (activeTab === 'manage' && !canManageCurrentLobby) {
+      setActiveTab('overview');
+    }
+  }, [activeTab, canManageCurrentLobby]);
+
   if (!id) {
     return <Navigate to="/" replace />;
   }
@@ -219,7 +231,6 @@ export default function LobbyDetailLive() {
   const avg = avgCompetitivePoints(resolvedLobby.players);
   const isCompetitive = resolvedLobby.gameType === 'competitive';
   const isCreator = currentUser?.id === resolvedLobby.createdBy;
-  const canManageCurrentLobby = canManageLobby(resolvedLobby, currentUser?.id);
   const isLobbyActive = resolvedLobby.status === 'active';
   const isLobbyExpired = resolvedLobby.status === 'expired';
   const viewerJoinRequestStatus = resolvedLobby.viewerJoinRequestStatus ?? null;
@@ -320,6 +331,22 @@ export default function LobbyDetailLive() {
     player.id !== resolvedLobby.createdBy && !resolvedLobby.organizerIds.includes(player.id)
   ));
   const ageRangeLabel = formatAgeRange(resolvedLobby.minAge, resolvedLobby.maxAge, lang);
+  const descriptionNeedsClamp = Boolean(resolvedLobby.description && resolvedLobby.description.length > 180);
+  const visibleDescription =
+    resolvedLobby.description && descriptionNeedsClamp && !showFullDescription
+      ? `${resolvedLobby.description.slice(0, 180).trimEnd()}…`
+      : resolvedLobby.description;
+  const overviewDetailChips = [
+    resolvedLobby.price && resolvedLobby.price > 0
+      ? `${resolvedLobby.price} ${t.lobby.perPerson}`
+      : t.lobby.free,
+    resolvedLobby.fieldType
+      ? `${resolvedLobby.fieldType === 'grass' ? '🌿' : resolvedLobby.fieldType === 'asphalt' ? '⬛' : '🏟️'} ${resolvedLobby.fieldType === 'grass' ? (lang === 'he' ? 'דשא' : 'Grass') : resolvedLobby.fieldType === 'asphalt' ? (lang === 'he' ? 'אספלט' : 'Asphalt') : (lang === 'he' ? 'אולם' : 'Indoor')}`
+      : null,
+    ageRangeLabel,
+    isCompetitive && resolvedLobby.minRating ? `${lang === 'he' ? 'מינימום' : 'Min'} ${Math.round(resolvedLobby.minRating)} ${lang === 'he' ? "נק'" : 'pts'}` : null,
+    isCompetitive && resolvedLobby.minPointsPerGame != null ? `${lang === 'he' ? 'מינימום' : 'Min'} ${resolvedLobby.minPointsPerGame.toFixed(1)} ${lang === 'he' ? "נק'/משחק" : 'pts/game'}` : null,
+  ].filter((item): item is string => Boolean(item));
 
   const myStatus: MyStatus = (() => {
     if (!currentUser) {
@@ -663,50 +690,166 @@ export default function LobbyDetailLive() {
     }
   }
 
+  const lobbyTabs: Array<{ id: LobbyTab; label: string }> = [
+    { id: 'overview', label: lang === 'he' ? 'סקירה' : 'Overview' },
+    { id: 'players', label: lang === 'he' ? 'שחקנים' : 'Players' },
+    { id: 'chat', label: lang === 'he' ? "צ'אט" : 'Chat' },
+    ...(canManageCurrentLobby ? [{ id: 'manage' as const, label: lang === 'he' ? 'ניהול' : 'Manage' }] : []),
+  ];
+
+  const canInteractWithTeams = canManageCurrentLobby && activeTab === 'manage';
+
+  function renderPrimaryActionBlock() {
+    if (!isLobbyActive) {
+      return null;
+    }
+
+    if (myStatus === 'pending_confirm') {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleConfirm}
+            disabled={saving}
+            className="flex-1 rounded-2xl bg-green-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-green-700 disabled:opacity-60"
+          >
+            {lang === 'he' ? 'כנס' : 'Join'}
+          </button>
+          <button
+            onClick={handlePassToNext}
+            disabled={saving}
+            className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+          >
+            {lang === 'he' ? 'העבר לבא בתור' : 'Pass to next'}
+          </button>
+        </div>
+      );
+    }
+
+    if (myStatus === 'joined') {
+      return (
+        <button
+          onClick={handleLeave}
+          disabled={saving}
+          className="w-full rounded-2xl bg-red-500 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-60"
+        >
+          {t.lobby.leave}
+        </button>
+      );
+    }
+
+    if (myStatus === 'waitlisted') {
+      return (
+        <div className="space-y-2">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+            {hasPassedWaitlistSpot
+              ? (
+                  lang === 'he'
+                    ? `אתה במקום #${myWaitlistIndex + 1} ברשימת ההמתנה. העברת זמנית את המקום שנפתח לבא בתור.`
+                    : `You are #${myWaitlistIndex + 1} on the waitlist. You temporarily passed the current opening to the next player.`
+                )
+              : (
+                  lang === 'he'
+                    ? `אתה במקום #${myWaitlistIndex + 1} ברשימת ההמתנה`
+                    : `You are #${myWaitlistIndex + 1} on the waitlist`
+                )}
+          </div>
+          <button
+            onClick={handleLeave}
+            disabled={saving}
+            className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-60"
+          >
+            {lang === 'he' ? 'הסר אותי מהרשימה' : 'Remove me from waitlist'}
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <button
+        onClick={handleJoin}
+        disabled={saving || (viewerCanRequestAccess && (viewerJoinRequestStatus === 'pending' || viewerJoinRequestStatus === 'declined'))}
+        className={`w-full rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-colors disabled:opacity-60 ${
+          viewerCanRequestAccess
+            ? 'bg-gray-900 hover:bg-black'
+            : isFull
+              ? 'bg-amber-500 hover:bg-amber-600'
+              : 'bg-primary-600 hover:bg-primary-700'
+        }`}
+      >
+        {viewerCanRequestAccess
+          ? (
+              viewerJoinRequestStatus === 'pending'
+                ? (lang === 'he' ? 'בקשת הכניסה נשלחה' : 'Access request sent')
+                : viewerJoinRequestStatus === 'declined'
+                  ? (lang === 'he' ? 'בקשת הכניסה נדחתה' : 'Access request declined')
+                  : (lang === 'he' ? 'בקש להיכנס ללובי' : 'Request lobby access')
+            )
+          : isFull
+            ? (lang === 'he' ? '+ הצטרף לרשימת ההמתנה' : '+ Join Waitlist')
+            : t.lobby.join}
+      </button>
+    );
+  }
+
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-4">
         <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-gray-500 hover:text-primary-600 transition-colors">
           <ChevronLeft size={16} />
           {t.lobby.back}
         </button>
-        {canManageCurrentLobby && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => void handleShareLobby()}
-              disabled={sharingLobby || !shareLink}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 disabled:opacity-60 rounded-xl transition-colors"
-            >
-              <Share2 size={14} />
-              {lang === 'he' ? 'שתף קישור' : 'Share link'}
-            </button>
-            <button
-              onClick={() => navigate(`/lobby/${lobbyId}/edit`)}
-              disabled={!isCreator}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-600 border border-primary-200 hover:bg-primary-50 rounded-xl transition-colors"
-            >
-              <Pencil size={14} />
-              {lang === 'he' ? 'ערוך' : 'Edit'}
-            </button>
-            {isCreator && (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={saving}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-60 rounded-xl transition-colors"
-              >
-                <Trash2 size={14} />
-                {t.lobby.delete}
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
-      {shareFeedback && canManageCurrentLobby && (
-        <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-800">
-          {shareFeedback}
+      <div className="mb-4 rounded-[28px] border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900">{lobby.title}</h1>
+              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${isCompetitive ? 'bg-primary-100 text-primary-700' : 'bg-green-100 text-green-700'}`}>
+                {isCompetitive ? <Trophy size={11} /> : <Handshake size={11} />}
+                {isCompetitive ? (lang === 'he' ? 'תחרותי' : 'Competitive') : (lang === 'he' ? 'ידידותי' : 'Friendly')}
+              </span>
+              {resolvedLobby.accessType === 'locked' && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
+                  <Lock size={11} />
+                  {lang === 'he' ? 'נעול' : 'Locked'}
+                </span>
+              )}
+            </div>
+            {lobby.city && <p className="mt-2 text-sm text-gray-500">{lobby.city}</p>}
+          </div>
+          {avg !== null && isCompetitive && (
+            <div className="rounded-2xl bg-primary-50 px-4 py-3 text-center text-primary-700">
+              <div className="flex items-center justify-center gap-1">
+                <Trophy size={14} />
+                <span className="text-lg font-semibold">{Math.round(avg)}</span>
+              </div>
+              <p className="mt-1 text-[11px] font-medium">{lang === 'he' ? 'ממוצע בלובי' : 'Lobby avg'}</p>
+            </div>
+          )}
         </div>
-      )}
+
+        <div className="mt-4">
+          {renderPrimaryActionBlock()}
+        </div>
+      </div>
+
+      <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
+        {lobbyTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+              activeTab === tab.id
+                ? 'bg-primary-600 text-white'
+                : 'border border-gray-200 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-600'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {duplicationSummary && (
         <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
@@ -724,7 +867,13 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {isCreator && showDeleteConfirm && (
+      {activeTab === 'manage' && shareFeedback && canManageCurrentLobby && (
+        <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm text-primary-800">
+          {shareFeedback}
+        </div>
+      )}
+
+      {activeTab === 'manage' && isCreator && showDeleteConfirm && (
         <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4">
           <p className="text-sm font-semibold text-red-700">{t.lobby.deleteConfirm}</p>
           <p className="mt-1 text-xs text-red-600">{t.lobby.deleteWarning}</p>
@@ -779,7 +928,40 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {isCreator && (
+      {activeTab === 'manage' && canManageCurrentLobby && (
+        <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => void handleShareLobby()}
+              disabled={sharingLobby || !shareLink}
+              className="flex items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+            >
+              <Share2 size={14} />
+              {lang === 'he' ? 'שתף קישור' : 'Share link'}
+            </button>
+            <button
+              onClick={() => navigate(`/lobby/${lobbyId}/edit`)}
+              disabled={!isCreator}
+              className="flex items-center gap-1.5 rounded-xl border border-primary-200 px-3 py-2 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 disabled:opacity-60"
+            >
+              <Pencil size={14} />
+              {lang === 'he' ? 'ערוך' : 'Edit'}
+            </button>
+            {isCreator && (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60"
+              >
+                <Trash2 size={14} />
+                {t.lobby.delete}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'manage' && isCreator && (
         <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -871,7 +1053,7 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {canManageCurrentLobby && (
+      {activeTab === 'manage' && canManageCurrentLobby && (
         <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -899,7 +1081,7 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {isCreator && resolvedLobby.accessType === 'locked' && (
+      {activeTab === 'manage' && isCreator && resolvedLobby.accessType === 'locked' && (
         <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -980,7 +1162,7 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {canManageCurrentLobby && resolvedLobby.accessType === 'locked' && joinRequests.length > 0 && (
+      {activeTab === 'manage' && canManageCurrentLobby && resolvedLobby.accessType === 'locked' && joinRequests.length > 0 && (
         <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -1038,7 +1220,7 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {canManageCurrentLobby && isCompetitive && teams.length > 0 && (
+      {activeTab === 'manage' && canManageCurrentLobby && isCompetitive && teams.length > 0 && (
         <div className={`mb-4 rounded-2xl border p-4 ${lobbyResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -1084,120 +1266,171 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              {lobby.isPrivate && <Lock size={14} className="text-gray-400" />}
-              <h1 className="text-2xl font-bold text-gray-900">{lobby.title}</h1>
-              <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${isCompetitive ? 'bg-primary-100 text-primary-700' : 'bg-green-100 text-green-700'}`}>
-                {isCompetitive ? <Trophy size={11} /> : <Handshake size={11} />}
-                {isCompetitive ? (lang === 'he' ? 'תחרותי' : 'Competitive') : (lang === 'he' ? 'ידידותי' : 'Friendly')}
-              </span>
+      {myStatus === 'pending_confirm' && isLobbyActive && (
+        <div className="mb-4 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          <p className="font-semibold">{lang === 'he' ? 'יש לך מקום!' : 'A spot opened for you!'}</p>
+          <p className="mt-1">
+            {lang === 'he'
+              ? 'התפנה מקום עבורך. אפשר להיכנס עכשיו או להעביר זמנית לבא בתור.'
+              : 'A spot opened for you. You can join now or temporarily pass it to the next player.'}
+          </p>
+        </div>
+      )}
+
+      {error && <p className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
+
+      {activeTab === 'overview' && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <OverviewTile icon={<Clock size={16} className="text-primary-600" />} label={t.lobby.dateTime} value={dateStr} />
+              <OverviewTile
+                icon={<MapPin size={16} className="text-primary-600" />}
+                label={t.lobby.location}
+                value={formatLocationLabel(lobby.address, lobby.city)}
+                helper={distanceFromUserKm != null ? `${distanceFromUserKm.toFixed(1)} ${t.common.km} ${t.common.away}` : undefined}
+              />
+              <OverviewTile
+                icon={<Users size={16} className="text-primary-600" />}
+                label={t.lobby.players}
+                value={`${lobby.players.length} / ${lobby.maxPlayers}`}
+                helper={lobby.numTeams && lobby.playersPerTeam ? `${lobby.numTeams} ${lang === 'he' ? 'קבוצות' : 'teams'} × ${lobby.playersPerTeam} ${lang === 'he' ? 'שחקנים' : 'players'}` : undefined}
+              />
             </div>
-            {lobby.city && <p className="text-gray-500">{lobby.city}</p>}
-          </div>
-          {avg !== null && isCompetitive && (
-            <div className="text-end">
-              <div className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-3 py-1 text-sm font-semibold text-primary-700">
-                <Trophy size={13} />
-                {Math.round(avg)}
+
+            <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{lang === 'he' ? 'ניווט' : 'Navigation'}</p>
+                  {distanceFromUserKm != null && (
+                    <p className="mt-1 text-xs text-gray-500">{distanceSourceText}</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50">
+                    <ExternalLink size={11} />
+                    Google Maps
+                  </a>
+                  <a href={wazeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50">
+                    <ExternalLink size={11} />
+                    Waze
+                  </a>
+                </div>
               </div>
-              <p className="text-xs text-gray-400 mt-1">{lang === 'he' ? 'ממוצע נק׳ תחרות' : 'avg comp. points'}</p>
+              {hasCoords && (
+                <div className="mt-3 overflow-hidden rounded-2xl border border-gray-100">
+                  <LocationPreviewMap
+                    latitude={resolvedLobby.latitude!}
+                    longitude={resolvedLobby.longitude!}
+                  />
+                </div>
+              )}
+            </div>
+
+            {visibleDescription && (
+              <div className="mt-4">
+                <p className="text-sm leading-7 text-gray-700">{visibleDescription}</p>
+                {descriptionNeedsClamp && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFullDescription((current) => !current)}
+                    className="mt-2 text-sm font-semibold text-primary-600"
+                  >
+                    {showFullDescription ? (lang === 'he' ? 'הצג פחות' : 'Show less') : (lang === 'he' ? 'הצג עוד' : 'Show more')}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <details className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-4" open={showMoreDetails} onToggle={(event) => setShowMoreDetails((event.currentTarget as HTMLDetailsElement).open)}>
+              <summary className="cursor-pointer list-none text-sm font-semibold text-gray-900">
+                {lang === 'he' ? 'פרטים נוספים' : 'More details'}
+              </summary>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {overviewDetailChips.map((item) => (
+                  <span key={item} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-700">
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </details>
+          </div>
+
+          {lobbyResult && (
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="mb-4">
+                <h2 className="font-semibold text-gray-900">
+                  {lang === 'he' ? 'תוצאות ונקודות' : 'Results and points'}
+                </h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  {resultReporterText}
+                </p>
+              </div>
+              {myTeamAssignment && myTeamResult && (
+                <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">
+                        {lang === 'he' ? 'הסיכום האישי שלכם' : 'Your summary'}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-gray-900">
+                        {lang === 'he'
+                          ? `שיחקתם בקבוצה ${getTeamColorLabel(myTeamAssignment.team.color, lang)}`
+                          : `You played on the ${getTeamColorLabel(myTeamAssignment.team.color, lang)} team`}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-600">
+                        {formatRankLabel(myTeamResult.rank, lang)} • {myTeamResult.wins} {lang === 'he' ? 'ניצחונות' : 'wins'}
+                      </p>
+                    </div>
+                    <div className="text-end">
+                      <p className="text-lg font-bold text-primary-700">{formatSignedPoints(myAwardedPoints ?? myTeamResult.awardedPoints)}</p>
+                      <p className="text-xs text-primary-600">{lang === 'he' ? 'נקודות שקיבלתם' : 'points earned'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {lobbyResult.notes && (
+                <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
+                  <p className="text-xs font-semibold text-amber-800">
+                    {lang === 'he' ? 'הערת מארגן' : 'Organizer note'}
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">{lobbyResult.notes}</p>
+                </div>
+              )}
+              <div className="space-y-3">
+                {lobbyResult.teamResults.map((teamResult) => (
+                  <div key={teamResult.lobbyTeamId} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <span className={`inline-block h-3 w-3 rounded-full ${teamColorClassName(teamResult.teamColor)}`} />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {lang === 'he'
+                            ? `קבוצה ${getTeamColorLabel(teamResult.teamColor, lang)}`
+                            : `${getTeamColorLabel(teamResult.teamColor, lang)} Team`}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatRankLabel(teamResult.rank, lang)} • {teamResult.wins} {lang === 'he' ? 'ניצחונות' : 'wins'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-end">
+                      <p className="text-sm font-semibold text-primary-700">{formatPointsSummary(teamResult.awardedPoints, teamResult.awardedPointsMax, lang).value}</p>
+                      <p className="text-xs text-gray-500">{formatPointsSummary(teamResult.awardedPoints, teamResult.awardedPointsMax, lang).label}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
+      )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-          <InfoRow icon={<MapPin size={15} />} label={t.lobby.location}>
-            <span>
-              {formatLocationLabel(lobby.address, lobby.city)}
-            </span>
-            {distanceFromUserKm != null && (
-              <span className="text-gray-400 block text-xs mb-1">
-                {distanceFromUserKm.toFixed(1)} {t.common.km} {t.common.away}
-              </span>
-            )}
-            {distanceFromUserKm != null && (
-              <span className="text-gray-400 block text-[11px] mb-1">
-                {distanceSourceText}
-              </span>
-            )}
-            <div className="flex gap-2 mt-1">
-              <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors font-medium">
-                <ExternalLink size={11} />
-                Google Maps
-              </a>
-              <a href={wazeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors font-medium">
-                <ExternalLink size={11} />
-                Waze
-              </a>
-            </div>
-          </InfoRow>
-          <InfoRow icon={<Clock size={15} />} label={t.lobby.dateTime}>
-            {dateStr}
-          </InfoRow>
-          <InfoRow icon={<Users size={15} />} label={t.lobby.players}>
-            <span className={isFull ? 'text-red-500 font-semibold' : 'text-primary-600 font-semibold'}>
-              {lobby.players.length} / {lobby.maxPlayers}
-            </span>
-            {lobby.numTeams && lobby.playersPerTeam && (
-              <span className="text-gray-400 text-xs block">
-                {lobby.numTeams} {lang === 'he' ? 'קבוצות' : 'teams'} × {lobby.playersPerTeam} {lang === 'he' ? 'שחקנים' : 'players'}
-              </span>
-            )}
-          </InfoRow>
-          <InfoRow icon={<ShieldCheck size={15} />} label={t.lobby.price}>
-            {lobby.price && lobby.price > 0 ? `${lobby.price} ${t.lobby.perPerson}` : <span className="text-primary-600 font-semibold">{t.lobby.free}</span>}
-          </InfoRow>
-        </div>
-
-        {lobby.minRating && isCompetitive && (
-          <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
-            <span className="text-gray-400">{lang === 'he' ? 'מינימום נק׳ תחרות:' : 'Min competitive points:'}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
-              <Trophy size={11} />
-              {Math.round(lobby.minRating)}
-            </span>
-          </div>
-        )}
-        {lobby.minPointsPerGame != null && isCompetitive && (
-          <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
-            <span className="text-gray-400">{lang === 'he' ? 'מינימום נק׳ למשחק:' : 'Min points per game:'}</span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
-              <Trophy size={11} />
-              {lobby.minPointsPerGame.toFixed(1)}
-            </span>
-          </div>
-        )}
-        <div className="mt-2 flex flex-wrap gap-2">
-          {lobby.fieldType && (
-            <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full">
-              {lobby.fieldType === 'grass' ? '🌿' : lobby.fieldType === 'asphalt' ? '⬛' : '🏟️'}
-              {' '}{lobby.fieldType === 'grass' ? (lang === 'he' ? 'דשא' : 'Grass') : lobby.fieldType === 'asphalt' ? (lang === 'he' ? 'אספלט' : 'Asphalt') : (lang === 'he' ? 'אולם' : 'Indoor')}
-            </span>
-          )}
-          {ageRangeLabel && (
-            <span className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">
-              {ageRangeLabel}
-            </span>
-          )}
-        </div>
-
-        {lobby.description && (
-          <div className="mt-4 pt-4 border-t border-gray-100">
-            <p className="text-sm text-gray-500 font-medium mb-1">{t.lobby.description}</p>
-            <p className="text-sm text-gray-700">{lobby.description}</p>
-          </div>
-        )}
-      </div>
-
-      {teams.length > 0 && (
+      {(activeTab === 'players' || activeTab === 'manage') && teams.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4" aria-busy={swappingTeams}>
           <h2 className="font-semibold text-gray-900 mb-4">
             {lang === 'he' ? 'הקבוצות שנקבעו' : 'Assigned teams'}
           </h2>
-          {canManageCurrentLobby && (
+          {canInteractWithTeams && (
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <p className="text-xs text-gray-500">
                 {selectedSwapPlayer
@@ -1263,9 +1496,9 @@ export default function LobbyDetailLive() {
                     <button
                       key={player.id}
                       type="button"
-                      disabled={!canManageCurrentLobby || swappingTeams}
+                      disabled={!canInteractWithTeams || swappingTeams}
                       onClick={() => {
-                        if (!canManageCurrentLobby) {
+                        if (!canInteractWithTeams) {
                           return;
                         }
 
@@ -1286,7 +1519,7 @@ export default function LobbyDetailLive() {
                         void handleSwapPlayers(player.id, assignment.team.id);
                       }}
                       className={`flex w-full items-center gap-3 rounded-xl bg-white px-3 py-2 text-start transition-colors ${
-                        canManageCurrentLobby ? 'hover:bg-primary-50 disabled:hover:bg-white' : ''
+                        canInteractWithTeams ? 'hover:bg-primary-50 disabled:hover:bg-white' : ''
                       } ${
                         selectedSwapPlayer?.profileId === player.id && selectedSwapPlayer.teamId === assignment.team.id
                           ? 'ring-2 ring-primary-300 bg-primary-50'
@@ -1323,81 +1556,8 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {lobbyResult && (
+      {activeTab === 'players' && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
-          <div className="mb-4">
-            <h2 className="font-semibold text-gray-900">
-              {lang === 'he' ? 'תוצאות ונקודות' : 'Results and points'}
-            </h2>
-            <p className="mt-1 text-xs text-gray-500">
-              {resultReporterText}
-            </p>
-          </div>
-          {myTeamAssignment && myTeamResult && (
-            <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">
-                    {lang === 'he' ? 'הסיכום האישי שלכם' : 'Your summary'}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">
-                    {lang === 'he'
-                      ? `שיחקתם בקבוצה ${getTeamColorLabel(myTeamAssignment.team.color, lang)}`
-                      : `You played on the ${getTeamColorLabel(myTeamAssignment.team.color, lang)} team`}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-600">
-                    {formatRankLabel(myTeamResult.rank, lang)} • {myTeamResult.wins} {lang === 'he' ? 'ניצחונות' : 'wins'}
-                  </p>
-                </div>
-                <div className="text-end">
-                  <p className="text-lg font-bold text-primary-700">{formatSignedPoints(myAwardedPoints ?? myTeamResult.awardedPoints)}</p>
-                  <p className="text-xs text-primary-600">{lang === 'he' ? 'נקודות שקיבלתם' : 'points earned'}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          {lobbyResult.notes && (
-            <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
-              <p className="text-xs font-semibold text-amber-800">
-                {lang === 'he' ? 'הערת מארגן' : 'Organizer note'}
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-amber-900">{lobbyResult.notes}</p>
-            </div>
-          )}
-          <div className="space-y-3">
-            {lobbyResult.teamResults.map((teamResult) => (
-              <div key={teamResult.lobbyTeamId} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-4 py-3">
-                <div className="flex items-center gap-3">
-                  <span className={`inline-block h-3 w-3 rounded-full ${teamColorClassName(teamResult.teamColor)}`} />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">
-                      {lang === 'he'
-                        ? `קבוצה ${getTeamColorLabel(teamResult.teamColor, lang)}`
-                        : `${getTeamColorLabel(teamResult.teamColor, lang)} Team`}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {formatRankLabel(teamResult.rank, lang)} • {teamResult.wins} {lang === 'he' ? 'ניצחונות' : 'wins'}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-end">
-                  <p className="text-sm font-semibold text-primary-700">{formatPointsSummary(teamResult.awardedPoints, teamResult.awardedPointsMax, lang).value}</p>
-                  <p className="text-xs text-gray-500">{formatPointsSummary(teamResult.awardedPoints, teamResult.awardedPointsMax, lang).label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hasCoords && (
-        <LocationPreviewMap
-          latitude={resolvedLobby.latitude!}
-          longitude={resolvedLobby.longitude!}
-        />
-      )}
-
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-gray-900">
             {t.lobby.playerList} ({lobby.players.length}/{lobby.maxPlayers})
@@ -1457,16 +1617,21 @@ export default function LobbyDetailLive() {
             </button>
           ))}
         </div>
-      </div>
+        </div>
+      )}
 
-      <LobbyChat
-        lobbyId={lobbyId}
-        currentUser={currentUser}
-        canViewChat={canViewLobbyChat}
-        canSendChat={canSendLobbyChat}
-      />
+      {activeTab === 'chat' && (
+        <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+          <LobbyChat
+            lobbyId={lobbyId}
+            currentUser={currentUser}
+            canViewChat={canViewLobbyChat}
+            canSendChat={canSendLobbyChat}
+          />
+        </div>
+      )}
 
-      {lobby.waitlist.length > 0 && (
+      {activeTab === 'players' && lobby.waitlist.length > 0 && (
         <div className="bg-amber-50 rounded-2xl border border-amber-100 p-5 mb-4">
           <h3 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
             <AlertCircle size={16} />
@@ -1627,9 +1792,7 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
-
-      {myStatus === 'pending_confirm' && isLobbyActive && (
+      {false && myStatus === 'pending_confirm' && isLobbyActive && (
         <div className="bg-green-50 border border-green-200 rounded-2xl p-5 mb-4 text-center">
           <p className="font-semibold text-green-800 mb-1">{lang === 'he' ? 'יש לך מקום!' : 'A spot opened for you!'}</p>
           <p className="text-sm text-green-700 mb-3">
@@ -1663,7 +1826,7 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
-      {myStatus !== 'pending_confirm' && isLobbyActive && (
+      {false && myStatus !== 'pending_confirm' && isLobbyActive && (
         <>
           {myStatus === 'none' && (
             <button
@@ -1727,14 +1890,25 @@ export default function LobbyDetailLive() {
   );
 }
 
-function InfoRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+function OverviewTile({
+  icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  helper?: string;
+}) {
   return (
-    <div className="flex items-start gap-2">
-      <span className="text-gray-400 mt-0.5 shrink-0">{icon}</span>
-      <div>
-        <p className="text-gray-400 text-xs mb-0.5">{label}</p>
-        <div className="text-gray-800">{children}</div>
+    <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+      <div className="flex items-center gap-2">
+        {icon}
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</p>
       </div>
+      <p className="mt-3 text-sm font-semibold leading-6 text-gray-900">{value}</p>
+      {helper ? <p className="mt-1 text-xs text-gray-500">{helper}</p> : null}
     </div>
   );
 }

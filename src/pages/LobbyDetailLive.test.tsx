@@ -361,9 +361,11 @@ describe('LobbyDetailLive join flows', () => {
   it('only enables lobby chat for players who are inside the lobby flow', async () => {
     currentUser = makeCurrentUser();
     fetchLobbyByIdMock.mockResolvedValue(makeLobby());
+    const user = userEvent.setup();
 
     renderLobbyDetail();
 
+    await user.click(await screen.findByRole('button', { name: 'Chat' }));
     const hiddenChat = await screen.findByTestId('lobby-chat');
     expect(hiddenChat).toHaveAttribute('data-can-view-chat', 'false');
     expect(hiddenChat).toHaveTextContent('Chat hidden');
@@ -374,6 +376,7 @@ describe('LobbyDetailLive join flows', () => {
     }));
 
     renderLobbyDetail();
+    await user.click(await screen.findByRole('button', { name: 'Chat' }));
 
     await waitFor(() => {
       expect(screen.getByTestId('lobby-chat')).toHaveAttribute('data-can-view-chat', 'true');
@@ -416,6 +419,7 @@ describe('LobbyDetailLive join flows', () => {
       id: 'organizer-1',
       friends: ['friend-1', 'friend-2'],
     });
+    canManageLobbyValue = true;
     allUsers = [
       makePlayer('friend-1', { name: 'Friend One', position: 'Attack' }),
       makePlayer('friend-2', { name: 'Friend Two', position: 'Defense' }),
@@ -431,6 +435,7 @@ describe('LobbyDetailLive join flows', () => {
     const user = userEvent.setup();
     renderLobbyDetail();
 
+    await user.click(await screen.findByRole('button', { name: 'Manage' }));
     await screen.findByText('Invite friends to this lobby');
     await user.click(screen.getByRole('button', { name: 'Invite' }));
 
@@ -460,6 +465,7 @@ describe('LobbyDetailLive join flows', () => {
     const user = userEvent.setup();
     renderLobbyDetail();
 
+    await user.click(await screen.findByRole('button', { name: 'Manage' }));
     await screen.findByText('Lobby access requests');
     await user.click(screen.getByRole('button', { name: 'Approve' }));
 
@@ -489,6 +495,7 @@ describe('LobbyDetailLive join flows', () => {
     const user = userEvent.setup();
     renderLobbyDetail();
 
+    await user.click(await screen.findByRole('button', { name: 'Manage' }));
     await screen.findByText('Lobby access requests');
     await user.click(screen.getByRole('button', { name: 'Decline' }));
 
@@ -566,6 +573,7 @@ describe('LobbyDetailLive join flows', () => {
         undefined,
       );
     });
+    await user.click(screen.getByRole('button', { name: 'Manage' }));
     expect(await screen.findByText('The result was saved and points were already awarded.')).toBeInTheDocument();
   });
 
@@ -603,6 +611,7 @@ describe('LobbyDetailLive join flows', () => {
       expect(screen.queryByText('Report lobby results')).not.toBeInTheDocument();
     });
 
+    await user.click(screen.getByRole('button', { name: 'Manage' }));
     const reopenButton = screen.getByRole('button', { name: 'Submit result' });
     expect(reopenButton).toBeEnabled();
 
