@@ -28,6 +28,7 @@ import type {
   NetworkRecommendation,
   LeaderboardStats,
   LeaderboardEntry,
+  NetworkRecommendationBucket,
 } from '../types';
 import {
   createCompetitiveResultNotifications,
@@ -53,8 +54,9 @@ import { canManageLobby } from './lobbyRoles';
 import { buildBalancedLobbyTeams } from './teamAssignment';
 import { buildWaitlistSyncPlan } from './waitlist';
 import { SEARCH_HISTORY_LIMIT, normalizeNotificationPreferences } from './preferences';
+import { haversineKm } from '../utils/geo';
 
-const PROFILE_SELECT_FIELDS = 'id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, birthdate, rating_history, lobby_history';
+const PROFILE_SELECT_FIELDS = 'id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, birthdate, rating_history, lobby_history, home_latitude, home_longitude, home_address';
 const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, min_points_per_game, min_age, max_age, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, latitude, longitude';
 const LOBBY_SELECT_FIELDS_WITH_STATUS = `${LOBBY_SELECT_FIELDS}, status`;
 
@@ -180,6 +182,9 @@ type ProfileRow = {
   bio: string | null;
   photo_url: string | null;
   birthdate: string | null;
+  home_latitude: number | null;
+  home_longitude: number | null;
+  home_address: string | null;
   rating_history: RatingEntry[];
   lobby_history: LobbyHistoryEntry[];
 };
@@ -513,6 +518,9 @@ function mapProfile(row: ProfileRow, stats?: CompetitiveProfileStats): Player {
     email: row.email ?? undefined,
     photoUrl: row.photo_url ?? undefined,
     birthdate: row.birthdate ?? undefined,
+    homeLatitude: row.home_latitude ?? undefined,
+    homeLongitude: row.home_longitude ?? undefined,
+    homeAddress: row.home_address ?? undefined,
     skills: [],
     competitivePoints,
     competitiveGamesPlayed,
@@ -3091,6 +3099,8 @@ export async function fetchNetworkRecommendations(profileId: string): Promise<Ne
   const sentOrPending = new Set<string>();
   const receivedPending = new Set<string>();
   const directFriends = new Set<string>();
+  const playersById = new Map(players.map((player) => [player.id, player]));
+  const viewerProfile = playersById.get(profileId) ?? null;
 
   for (const row of (friendRowsResult.data ?? []) as FriendRequestListRow[]) {
     const fromSet = adjacency.get(row.from_profile_id) ?? new Set<string>();
@@ -3166,6 +3176,65 @@ export async function fetchNetworkRecommendations(profileId: string): Promise<Ne
 
   const recommendations: NetworkRecommendation[] = [];
 
+  function isNearYou(candidateId: string) {
+    if (!viewerProfile) {
+      return false;
+    }
+
+    const candidate = playersById.get(candidateId);
+    if (!candidate) {
+      return false;
+    }
+
+    if (
+      viewerProfile.homeLatitude != null
+      && viewerProfile.homeLongitude != null
+      && candidate.homeLatitude != null
+      && candidate.homeLongitude != null
+    ) {
+      return haversineKm(
+        viewerProfile.homeLatitude,
+        viewerProfile.homeLongitude,
+        candidate.homeLatitude,
+        candidate.homeLongitude,
+      ) <= 25;
+    }
+
+    const viewerAddress = (viewerProfile.homeAddress ?? '').trim().toLocaleLowerCase();
+    const candidateAddress = (candidate.homeAddress ?? '').trim().toLocaleLowerCase();
+
+    if (!viewerAddress || !candidateAddress) {
+      return false;
+    }
+
+    const viewerTokens = viewerAddress.split(',').map((token) => token.trim()).filter(Boolean);
+    const candidateTokens = candidateAddress.split(',').map((token) => token.trim()).filter(Boolean);
+    const viewerCity = viewerTokens[viewerTokens.length - 1] ?? viewerAddress;
+    const candidateCity = candidateTokens[candidateTokens.length - 1] ?? candidateAddress;
+    return viewerCity !== '' && viewerCity === candidateCity;
+  }
+
+  function getPrimaryBucket(input: {
+    mutualFriends: number;
+    sharedLobbies: number;
+    sameTeamLobbies: number;
+    isNearYou: boolean;
+  }): NetworkRecommendationBucket {
+    if (input.sharedLobbies > 0 || input.sameTeamLobbies > 0) {
+      return 'played_together';
+    }
+
+    if (input.mutualFriends > 0) {
+      return 'mutual_friends';
+    }
+
+    if (input.isNearYou) {
+      return 'near_you';
+    }
+
+    return 'people_you_may_know';
+  }
+
   for (const player of players) {
     if (
       player.id === profileId
@@ -3180,11 +3249,18 @@ export async function fetchNetworkRecommendations(profileId: string): Promise<Ne
     const sharedLobbies = sharedLobbiesByProfile.get(player.id)?.size ?? 0;
     const sameTeamLobbies = sameTeamLobbiesByProfile.get(player.id)?.size ?? 0;
     const recentInteractions = recentInteractionsByProfile.get(player.id) ?? 0;
+    const nearby = isNearYou(player.id);
+    const profileStrengthScore =
+      player.gamesPlayed > 0 || Boolean(player.position) || Boolean(player.bio)
+        ? 5
+        : 0;
     const score =
       (mutualFriends * 30)
       + (sharedLobbies * 15)
       + (sameTeamLobbies * 20)
-      + (recentInteractions > 0 ? 20 : 0);
+      + (recentInteractions > 0 ? 20 : 0)
+      + (nearby ? 12 : 0)
+      + profileStrengthScore;
 
     if (score === 0) {
       continue;
@@ -3204,9 +3280,18 @@ export async function fetchNetworkRecommendations(profileId: string): Promise<Ne
       reasons.push('recent activity');
     }
 
+    const primaryBucket = getPrimaryBucket({
+      mutualFriends,
+      sharedLobbies,
+      sameTeamLobbies,
+      isNearYou: nearby,
+    });
+
     recommendations.push({
       profile: player,
       score,
+      primaryBucket,
+      subtitle: player.position ?? undefined,
       mutualFriends,
       sharedLobbies,
       sameTeamLobbies,

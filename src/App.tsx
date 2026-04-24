@@ -15,6 +15,7 @@ import ProfileHistoryPage from './pages/ProfileHistoryPage';
 import EditProfile from './pages/EditProfilePage';
 import NotificationsPage from './pages/NotificationsPage';
 import MyNetworkPage from './pages/MyNetworkPage';
+import NetworkDiscoveryBucketPage from './pages/NetworkDiscoveryBucketPage';
 import RafflesPage from './pages/RafflesPage';
 import LeaderboardsPage from './pages/LeaderboardsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -31,6 +32,7 @@ export default function App() {
                   <Route path="/" element={<Home />} />
                   <Route path="/notifications" element={<NotificationsPage />} />
                   <Route path="/network" element={<MyNetworkPage />} />
+                  <Route path="/network/discovery/:bucket" element={<NetworkDiscoveryBucketPage />} />
                   <Route path="/create" element={<CreateLobby />} />
                   <Route path="/raffles" element={<RafflesPage />} />
                   <Route path="/leaderboards" element={<LeaderboardsPage />} />

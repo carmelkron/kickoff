@@ -11,6 +11,11 @@ export type LobbyInviteStatus = 'pending' | 'accepted' | 'revoked';
 export type LobbyJoinRequestStatus = 'pending' | 'approved' | 'declined';
 export type SearchHistoryEntryKind = 'query' | 'profile' | 'lobby';
 export type SearchResultKind = 'profile' | 'lobby';
+export type NetworkRecommendationBucket =
+  | 'played_together'
+  | 'mutual_friends'
+  | 'near_you'
+  | 'people_you_may_know';
 export type NotificationPreferenceKey =
   | 'friendRequests'
   | 'lobbyInvites'
@@ -61,6 +66,9 @@ export interface Player {
   email?: string;
   photoUrl?: string;
   birthdate?: string;
+  homeLatitude?: number;
+  homeLongitude?: number;
+  homeAddress?: string;
   skills?: ProfileSkill[];
   ratingHistory: RatingEntry[];
   lobbyHistory: LobbyHistoryEntry[];
@@ -240,6 +248,8 @@ export interface FriendRequestListItem {
 export interface NetworkRecommendation {
   profile: Player;
   score: number;
+  primaryBucket: NetworkRecommendationBucket;
+  subtitle?: string;
   mutualFriends: number;
   sharedLobbies: number;
   sameTeamLobbies: number;
