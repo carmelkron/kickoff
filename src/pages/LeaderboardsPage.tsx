@@ -8,13 +8,11 @@ import type { LeaderboardEntry, LeaderboardStats } from '../types';
 function LeaderboardTable({
   icon,
   title,
-  subtitle,
   entries,
   emptyLabel,
 }: {
   icon: ReactNode;
   title: string;
-  subtitle: string;
   entries: LeaderboardEntry[];
   emptyLabel: string;
 }) {
@@ -26,10 +24,7 @@ function LeaderboardTable({
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-[var(--accent)]">
           {icon}
         </div>
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--text)]">{title}</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">{subtitle}</p>
-        </div>
+        <h2 className="text-lg font-semibold text-[var(--text)]">{title}</h2>
       </div>
 
       <div className="mt-5 space-y-3">
@@ -77,15 +72,17 @@ export default function LeaderboardsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetchLeaderboardStats().then((nextStats) => {
-      if (!cancelled) {
-        setStats(nextStats);
-      }
-    }).finally(() => {
-      if (!cancelled) {
-        setLoading(false);
-      }
-    });
+    void fetchLeaderboardStats()
+      .then((nextStats) => {
+        if (!cancelled) {
+          setStats(nextStats);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -94,44 +91,27 @@ export default function LeaderboardsPage() {
 
   return (
     <section>
-      <div className="rounded-[32px] bg-[linear-gradient(135deg,rgba(15,127,84,0.18),rgba(15,127,84,0.03))] px-6 py-7 shadow-[0_24px_70px_rgba(7,19,16,0.05)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--accent)]">
-          {lang === 'he' ? 'לוח הישגים' : 'Leaderboards'}
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--text)]">
-          {lang === 'he' ? 'מי מוביל את הקהילה' : 'Who is leading the community'}
-        </h1>
-        <p className="mt-3 text-sm leading-7 text-[var(--muted)]">
-          {lang === 'he'
-            ? 'שלוש טבלאות פתיחה שמבליטות נקודות, ניצחונות ורצפי הצלחה כדי לעודד תחרות בריאה.'
-            : 'Three launch tables highlighting points, wins, and winning streaks to encourage healthy competition.'}
-        </p>
-      </div>
-
       {loading ? (
         <p className="py-16 text-center text-sm text-[var(--muted)]">
           {lang === 'he' ? 'טוען הישגים...' : 'Loading leaderboards...'}
         </p>
       ) : (
-        <div className="mt-6 grid gap-6 xl:grid-cols-3">
+        <div className="grid gap-6 xl:grid-cols-3">
           <LeaderboardTable
             icon={<Crown size={20} />}
             title={lang === 'he' ? 'נקודות בכל הזמנים' : 'All-time points'}
-            subtitle={lang === 'he' ? 'הדירוג המצטבר של כל השחקנים' : 'The cumulative ranking across all competitive play'}
             entries={stats?.allTimePoints ?? []}
             emptyLabel={lang === 'he' ? 'עדיין אין נקודות להצגה.' : 'No points to show yet.'}
           />
           <LeaderboardTable
             icon={<Trophy size={20} />}
             title={lang === 'he' ? 'ניצחונות תחרותיים' : 'Competitive wins'}
-            subtitle={lang === 'he' ? 'מי ניצח הכי הרבה לובים תחרותיים' : 'Who won the most competitive lobbies'}
             entries={stats?.competitiveWins ?? []}
             emptyLabel={lang === 'he' ? 'עדיין אין ניצחונות להצגה.' : 'No wins to show yet.'}
           />
           <LeaderboardTable
             icon={<Flame size={20} />}
             title={lang === 'he' ? 'רצף ניצחונות גבוה' : 'Highest win streak'}
-            subtitle={lang === 'he' ? 'הרצף ההיסטורי הארוך ביותר בלי להישבר' : 'The longest historical streak without a loss'}
             entries={stats?.highestWinStreak ?? []}
             emptyLabel={lang === 'he' ? 'עדיין אין רצפים להצגה.' : 'No streaks to show yet.'}
           />
