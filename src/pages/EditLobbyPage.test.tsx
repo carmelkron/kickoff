@@ -96,8 +96,6 @@ function makeLobby(overrides: Record<string, unknown> = {}) {
     playersPerTeam: 5,
     minRating: 4,
     minPointsPerGame: null,
-    minAge: null,
-    maxAge: null,
     isPrivate: false,
     price: 25,
     description: 'Bring dark shirts.',
@@ -177,9 +175,10 @@ describe('EditLobbyPage', () => {
     await user.type(titleInput, 'Friday Night Derby');
 
     await user.click(screen.getByRole('button', { name: 'Locked' }));
-    await user.click(screen.getByRole('button', { name: '🏆 Competitive' }));
+    await user.click(screen.getByRole('button', { name: 'Competitive' }));
     await user.click(screen.getByRole('button', { name: '3 teams' }));
-    await user.click(screen.getByRole('button', { name: '⬛ Asphalt' }));
+    await user.click(screen.getByRole('button', { name: /Optional settings/i }));
+    await user.click(screen.getByRole('button', { name: 'Asphalt' }));
 
     const playersPerTeamSlider = document.querySelector('input[type="range"]');
     if (!(playersPerTeamSlider instanceof HTMLInputElement)) {
@@ -213,8 +212,6 @@ describe('EditLobbyPage', () => {
         numTeams: 3,
         playersPerTeam: 4,
         minPointsPerGame: 7.5,
-        minAge: undefined,
-        maxAge: undefined,
         price: 35,
         description: 'Bring both light and dark shirts.',
         gameType: 'competitive',

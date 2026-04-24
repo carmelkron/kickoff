@@ -23,7 +23,6 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
-alter table public.profiles add column if not exists birthdate date;
 alter table public.profiles add column if not exists home_latitude double precision;
 alter table public.profiles add column if not exists home_longitude double precision;
 alter table public.profiles add column if not exists home_address text;
@@ -40,8 +39,6 @@ create table if not exists public.lobbies (
   players_per_team integer,
   min_rating numeric(3, 1),
   min_points_per_game numeric(5, 2),
-  min_age integer,
-  max_age integer,
   is_private boolean not null default false,
   price integer,
   description text,
@@ -110,8 +107,6 @@ alter table public.profiles drop constraint if exists profiles_competitive_point
 alter table public.profiles add constraint profiles_competitive_points_non_negative_check check (competitive_points >= 0);
 alter table public.profiles drop constraint if exists profiles_bio_length_check;
 alter table public.profiles add constraint profiles_bio_length_check check (bio is null or char_length(bio) <= 280);
-alter table public.profiles drop constraint if exists profiles_birthdate_range_check;
-alter table public.profiles add constraint profiles_birthdate_range_check check (birthdate is null or birthdate >= date '1900-01-01');
 
 alter table public.lobbies drop constraint if exists lobbies_title_length_check;
 alter table public.lobbies add constraint lobbies_title_length_check check (char_length(trim(title)) between 3 and 80);
@@ -129,12 +124,6 @@ alter table public.lobbies drop constraint if exists lobbies_min_rating_range_ch
 alter table public.lobbies add constraint lobbies_min_rating_range_check check (min_rating is null or min_rating between 1.0 and 10.0);
 alter table public.lobbies drop constraint if exists lobbies_min_points_per_game_range_check;
 alter table public.lobbies add constraint lobbies_min_points_per_game_range_check check (min_points_per_game is null or min_points_per_game between 0 and 99.99);
-alter table public.lobbies drop constraint if exists lobbies_min_age_range_check;
-alter table public.lobbies add constraint lobbies_min_age_range_check check (min_age is null or min_age between 6 and 99);
-alter table public.lobbies drop constraint if exists lobbies_max_age_range_check;
-alter table public.lobbies add constraint lobbies_max_age_range_check check (max_age is null or max_age between 6 and 99);
-alter table public.lobbies drop constraint if exists lobbies_age_range_order_check;
-alter table public.lobbies add constraint lobbies_age_range_order_check check (min_age is null or max_age is null or min_age <= max_age);
 alter table public.lobbies drop constraint if exists lobbies_price_range_check;
 alter table public.lobbies add constraint lobbies_price_range_check check (price is null or price between 0 and 999);
 alter table public.lobbies drop constraint if exists lobbies_description_length_check;

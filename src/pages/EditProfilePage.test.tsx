@@ -16,7 +16,6 @@ let currentUser: {
   avatarColor: string;
   position?: string;
   bio?: string;
-  birthdate?: string;
   photoUrl?: string;
   homeAddress?: string;
   homeLatitude?: number;
@@ -110,7 +109,6 @@ function makeCurrentUser(
     avatarColor: 'bg-blue-500',
     position: 'Defense',
     bio: 'Love five-a-side.',
-    birthdate: '1998-05-18',
     photoUrl: undefined,
     homeAddress: undefined,
     homeLatitude: undefined,
@@ -162,23 +160,6 @@ describe('EditProfilePage', () => {
     expect(updateProfileMock).not.toHaveBeenCalled();
   });
 
-  it('blocks saving when the birth date is invalid', async () => {
-    const user = userEvent.setup();
-    renderEditProfilePage();
-
-    const birthdateInput = document.querySelector('input[type="date"]');
-    if (!(birthdateInput instanceof HTMLInputElement)) {
-      throw new Error('Expected birth date input to exist');
-    }
-
-    await user.clear(birthdateInput);
-    await user.type(birthdateInput, '2099-01-01');
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
-
-    expect(await screen.findByText('Birth date cannot be in the future.')).toBeInTheDocument();
-    expect(updateProfileMock).not.toHaveBeenCalled();
-  });
-
   it('saves profile changes, skills, and home location', async () => {
     const user = userEvent.setup();
     renderEditProfilePage();
@@ -209,7 +190,6 @@ describe('EditProfilePage', () => {
         name: 'Alex Captain',
         position: 'Attack',
         bio: 'Pressing high and tracking back.',
-        birthdate: '1998-05-18',
         photoUrl: undefined,
         skills: ['Finishing', 'Leadership'],
       });

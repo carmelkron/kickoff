@@ -7,7 +7,6 @@ import { updateProfile, updateHomeLocation } from '../lib/appData';
 import { getProfileSkillBadgeStyle } from '../lib/profileSkillBadges';
 import { uploadAvatar } from '../lib/storage';
 import { MAX_PROFILE_SKILLS, sanitizeProfileSkills, validateProfileSkills } from '../lib/validation';
-import { validateBirthdate } from '../utils/age';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
 import { formatLocationLabel } from '../utils/location';
@@ -25,7 +24,6 @@ export default function EditProfilePage() {
     name: '',
     position: '',
     bio: '',
-    birthdate: '',
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState('');
@@ -41,11 +39,9 @@ export default function EditProfilePage() {
         name: currentUser.name,
         position: currentUser.position ?? '',
         bio: currentUser.bio ?? '',
-        birthdate: currentUser.birthdate ?? '',
       });
       setSkills(currentUser.skills?.map((skill) => skill.label) ?? []);
       setSkillInput('');
-      // Pre-fill home address if already set
       if (currentUser.homeAddress) {
         setHomePlace({
           address: currentUser.homeAddress,
@@ -60,11 +56,17 @@ export default function EditProfilePage() {
 
   useEffect(() => {
     return () => {
-      if (photoPreview) URL.revokeObjectURL(photoPreview);
+      if (photoPreview) {
+        URL.revokeObjectURL(photoPreview);
+      }
     };
   }, [photoPreview]);
 
-  if (!currentUser) return <Navigate to="/login" replace />;
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const profileId = currentUser.id;
 
   const positions = lang === 'he' ? POSITIONS_HE : POSITIONS_EN;
 
@@ -76,8 +78,14 @@ export default function EditProfilePage() {
 
   function handlePhotoUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (!file) return;
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    if (!file) {
+      return;
+    }
+
+    if (photoPreview) {
+      URL.revokeObjectURL(photoPreview);
+    }
+
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   }
@@ -107,46 +115,39 @@ export default function EditProfilePage() {
       setError(lang === 'he' ? 'בחר עמדה מועדפת' : 'Choose a preferred position');
       return;
     }
-    const birthdateError = validateBirthdate(form.birthdate);
-    if (birthdateError) {
-      setError(birthdateError);
-      return;
-    }
     const skillErrors = validateProfileSkills(skills);
     if (skillErrors.length > 0) {
       setError(skillErrors[0]);
       return;
     }
+
     setSubmitting(true);
     setError('');
 
-    if (!currentUser) return;
-    const userId = currentUser.id;
     try {
       let photoUrl: string | null | undefined = undefined;
       if (photoFile) {
-        photoUrl = await uploadAvatar(photoFile, userId);
+        photoUrl = await uploadAvatar(photoFile, profileId);
       }
 
       await updateProfile({
-        profileId: userId,
+        profileId,
         name: form.name.trim(),
         position: form.position,
         bio: form.bio || undefined,
-        birthdate: form.birthdate || null,
         photoUrl,
         skills,
       });
 
       await updateHomeLocation(
-        userId,
+        profileId,
         homePlace?.latitude ?? null,
         homePlace?.longitude ?? null,
         homePlace?.address ?? null,
       );
 
       await refreshCurrentUser();
-      navigate(`/profile/${userId}`);
+      navigate(`/profile/${profileId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update profile');
       setSubmitting(false);
@@ -178,8 +179,11 @@ export default function EditProfilePage() {
                   {currentUser.initials}
                 </div>
               )}
-              <button type="button" onClick={() => fileInputRef.current?.click()}
-                className="absolute -bottom-1 -end-1 bg-white border border-gray-200 rounded-full p-1 shadow-sm hover:bg-gray-50 transition-colors">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-1 -end-1 bg-white border border-gray-200 rounded-full p-1 shadow-sm hover:bg-gray-50 transition-colors"
+              >
                 <Camera size={13} className="text-gray-600" />
               </button>
             </div>
@@ -196,31 +200,31 @@ export default function EditProfilePage() {
           <Field label={lang === 'he' ? 'שם מלא' : 'Full name'}>
             <Input value={form.name} onChange={setField('name')} required />
           </Field>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
           <Field label={lang === 'he' ? 'עמדה מועדפת' : 'Preferred position'}>
-            <select value={form.position} onChange={setField('position')}
+            <select
+              value={form.position}
+              onChange={setField('position')}
               required
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-300">
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-primary-300"
+            >
               <option value="">{lang === 'he' ? 'בחר עמדה' : 'Select position'}</option>
-              {positions.map((p) => <option key={p} value={p}>{p}</option>)}
+              {positions.map((position) => (
+                <option key={position} value={position}>
+                  {position}
+                </option>
+              ))}
             </select>
           </Field>
-          <Field label={lang === 'he' ? 'תאריך לידה (אופציונלי)' : 'Birth date (optional)'}>
-            <Input type="date" value={form.birthdate} onChange={setField('birthdate')} max="2099-12-31" />
-            <p className="mt-1.5 text-xs text-gray-400">
-              {lang === 'he'
-                ? 'השדה הזה פרטי ומשמש רק לבדיקת התאמה ללוביים עם הגבלת גיל.'
-                : 'This stays private and is used only for age-restricted lobbies.'}
-            </p>
-          </Field>
           <Field label={lang === 'he' ? 'ביו (אופציונלי)' : 'Bio (optional)'}>
-            <textarea rows={3} value={form.bio} onChange={setField('bio')}
+            <textarea
+              rows={3}
+              value={form.bio}
+              onChange={setField('bio')}
               placeholder={lang === 'he' ? 'ספר קצת על עצמך...' : 'Tell us about yourself...'}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300" />
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
+            />
           </Field>
-          <Field label={lang === 'he' ? 'Skills / מיומנויות' : 'Skills'}>
+          <Field label={lang === 'he' ? 'מיומנויות' : 'Skills'}>
             <div className="flex gap-2">
               <Input
                 value={skillInput}
@@ -243,11 +247,6 @@ export default function EditProfilePage() {
                 {lang === 'he' ? 'הוסף' : 'Add'}
               </button>
             </div>
-            <p className="mt-1.5 text-xs text-gray-400">
-              {lang === 'he'
-                ? `אפשר להוסיף עד ${MAX_PROFILE_SKILLS} מיומנויות. מבקרים בפרופיל יוכלו לעשות להן לייק.`
-                : `Add up to ${MAX_PROFILE_SKILLS} skills. Profile visitors will be able to like them.`}
-            </p>
             {skills.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-3">
                 {skills.map((skill) => {
@@ -265,11 +264,11 @@ export default function EditProfilePage() {
                       <button
                         type="button"
                         onClick={() => removeSkill(skill)}
-                        className="rounded-full bg-white/70 px-1.5 py-0.5 text-sm text-transparent transition-colors hover:bg-white"
+                        className="rounded-full bg-white/70 px-1.5 py-0.5 text-sm text-gray-700 transition-colors hover:bg-white"
+                        aria-label={`${lang === 'he' ? 'הסר' : 'Remove'} ${skill}`}
                       >
-                        <span className="text-gray-700">&times;</span>
-                      ×
-                    </button>
+                        &times;
+                      </button>
                     </span>
                   );
                 })}
@@ -287,18 +286,16 @@ export default function EditProfilePage() {
               placeholder={lang === 'he' ? 'חפש את הכתובת שלך...' : 'Search your address...'}
             />
             {homePlace && <SelectedPlaceNotice place={homePlace} lang={lang} privacyNote />}
-            <p className="text-xs text-gray-400 mt-1.5">
-              {lang === 'he'
-                ? '🔒 כתובתך פרטית — משמשת רק לחישוב מרחק למשחקים'
-                : '🔒 Your address is private — used only to calculate distance to games'}
-            </p>
           </Field>
         </div>
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
-        <button type="submit" disabled={submitting}
-          className="w-full py-4 bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-semibold rounded-2xl text-base transition-colors shadow-md">
+        <button
+          type="submit"
+          disabled={submitting}
+          className="w-full py-4 bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white font-semibold rounded-2xl text-base transition-colors shadow-md hover:shadow-lg"
+        >
           {submitting ? (lang === 'he' ? 'שומר...' : 'Saving...') : (lang === 'he' ? 'שמור שינויים' : 'Save changes')}
         </button>
       </form>
@@ -317,6 +314,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <input {...props} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-transparent" />
+    <input
+      {...props}
+      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-transparent"
+    />
   );
 }

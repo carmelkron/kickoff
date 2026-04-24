@@ -56,8 +56,8 @@ import { buildWaitlistSyncPlan } from './waitlist';
 import { SEARCH_HISTORY_LIMIT, normalizeNotificationPreferences } from './preferences';
 import { haversineKm } from '../utils/geo';
 
-const PROFILE_SELECT_FIELDS = 'id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, birthdate, rating_history, lobby_history, home_latitude, home_longitude, home_address';
-const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, min_points_per_game, min_age, max_age, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, latitude, longitude';
+const PROFILE_SELECT_FIELDS = 'id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, rating_history, lobby_history, home_latitude, home_longitude, home_address';
+const LOBBY_SELECT_FIELDS = 'id, title, address, city, datetime, max_players, num_teams, players_per_team, min_rating, min_points_per_game, is_private, price, description, created_by, distance_km, game_type, access_type, field_type, latitude, longitude';
 const LOBBY_SELECT_FIELDS_WITH_STATUS = `${LOBBY_SELECT_FIELDS}, status`;
 
 function toAppError(error: unknown, fallbackMessage: string) {
@@ -181,7 +181,6 @@ type ProfileRow = {
   position: string | null;
   bio: string | null;
   photo_url: string | null;
-  birthdate: string | null;
   home_latitude: number | null;
   home_longitude: number | null;
   home_address: string | null;
@@ -212,8 +211,6 @@ type LobbyRow = {
   players_per_team: number | null;
   min_rating: number | null;
   min_points_per_game: number | null;
-  min_age: number | null;
-  max_age: number | null;
   is_private: boolean;
   price: number | null;
   description: string | null;
@@ -517,7 +514,6 @@ function mapProfile(row: ProfileRow, stats?: CompetitiveProfileStats): Player {
     bio: row.bio ?? undefined,
     email: row.email ?? undefined,
     photoUrl: row.photo_url ?? undefined,
-    birthdate: row.birthdate ?? undefined,
     homeLatitude: row.home_latitude ?? undefined,
     homeLongitude: row.home_longitude ?? undefined,
     homeAddress: row.home_address ?? undefined,
@@ -753,7 +749,6 @@ export type UpdateProfileInput = {
   name: string;
   position?: string;
   bio?: string;
-  birthdate?: string | null;
   photoUrl?: string | null;
   skills?: string[];
 };
@@ -778,7 +773,6 @@ export async function updateProfile(input: UpdateProfileInput) {
       initials,
       position: input.position ?? null,
       bio: input.bio ?? null,
-      birthdate: input.birthdate ?? null,
       ...(input.photoUrl !== undefined ? { photo_url: input.photoUrl } : {}),
     })
     .eq('id', input.profileId);
@@ -1022,8 +1016,6 @@ export async function fetchLobbies(): Promise<Lobby[]> {
       playersPerTeam: row.players_per_team ?? undefined,
       minRating: row.min_rating ?? undefined,
       minPointsPerGame: row.min_points_per_game ?? undefined,
-      minAge: row.min_age ?? undefined,
-      maxAge: row.max_age ?? undefined,
       isPrivate: row.is_private,
       price: row.price ?? undefined,
       description: row.description ?? undefined,
@@ -2122,8 +2114,6 @@ export type CreateLobbyInput = {
   playersPerTeam?: number;
   minRating?: number;
   minPointsPerGame?: number;
-  minAge?: number;
-  maxAge?: number;
   price?: number;
   description?: string;
   createdBy: string;
@@ -2145,8 +2135,6 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     accessType: input.accessType,
     minRating: input.gameType === 'competitive' ? input.minRating : undefined,
     minPointsPerGame: input.gameType === 'competitive' ? input.minPointsPerGame : undefined,
-    minAge: input.minAge,
-    maxAge: input.maxAge,
     price: input.price,
     description: input.description,
   });
@@ -2169,8 +2157,6 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
     players_per_team: input.playersPerTeam ?? null,
     min_rating: input.gameType === 'competitive' ? (input.minRating ?? null) : null,
     min_points_per_game: input.gameType === 'competitive' ? (input.minPointsPerGame ?? null) : null,
-    min_age: input.minAge ?? null,
-    max_age: input.maxAge ?? null,
     is_private: false,
     price: input.price ?? null,
     description: input.description ? normalizeText(input.description) : null,
@@ -2198,8 +2184,6 @@ export async function createLobby(input: CreateLobbyInput): Promise<string> {
       players_per_team: lobbyPayload.players_per_team,
       min_rating: lobbyPayload.min_rating,
       min_points_per_game: lobbyPayload.min_points_per_game,
-      min_age: lobbyPayload.min_age,
-      max_age: lobbyPayload.max_age,
       is_private: lobbyPayload.is_private,
       price: lobbyPayload.price,
       description: lobbyPayload.description,
@@ -2591,8 +2575,6 @@ export type UpdateLobbyInput = {
   playersPerTeam?: number;
   minRating?: number;
   minPointsPerGame?: number;
-  minAge?: number;
-  maxAge?: number;
   price?: number;
   description?: string;
   gameType: GameType;
@@ -2616,8 +2598,6 @@ export async function updateLobby(input: UpdateLobbyInput) {
       max_players: (input.numTeams ?? 2) * (input.playersPerTeam ?? 5),
       min_rating: input.gameType === 'competitive' ? (input.minRating ?? null) : null,
       min_points_per_game: input.gameType === 'competitive' ? (input.minPointsPerGame ?? null) : null,
-      min_age: input.minAge ?? null,
-      max_age: input.maxAge ?? null,
       price: input.price ?? null,
       description: input.description ? normalizeText(input.description) : null,
       game_type: input.gameType,

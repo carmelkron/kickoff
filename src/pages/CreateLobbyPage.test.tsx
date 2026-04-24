@@ -78,8 +78,8 @@ function renderCreateLobbyPage() {
 
 async function fillValidCreateLobbyForm(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByPlaceholderText('e.g. Evening game at Gordon'), 'Thursday Night');
-  await user.type(screen.getByPlaceholderText('Manual fallback: address'), '123 Gordon St');
-  await user.type(screen.getByPlaceholderText('Manual fallback: city'), 'Tel Aviv');
+  await user.type(screen.getByPlaceholderText('Manual address'), '123 Gordon St');
+  await user.type(screen.getByPlaceholderText('Manual city'), 'Tel Aviv');
 
   const dateInput = document.querySelector('input[type="date"]');
   const timeInput = document.querySelector('input[type="time"]');
@@ -143,8 +143,6 @@ describe('CreateLobbyPage', () => {
         numTeams: 2,
         playersPerTeam: 5,
         minPointsPerGame: undefined,
-        minAge: undefined,
-        maxAge: undefined,
         price: undefined,
         description: undefined,
         createdBy: 'user-1',
@@ -157,6 +155,24 @@ describe('CreateLobbyPage', () => {
     });
 
     expect(await screen.findByText('Lobby Page')).toBeInTheDocument();
+  });
+
+  it('keeps optional settings collapsed until the user opens them', async () => {
+    const user = userEvent.setup();
+    renderCreateLobbyPage();
+
+    expect(screen.queryByPlaceholderText('e.g. 8.5')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Tell us about the game...')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('0 = Free')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Optional settings/i }));
+
+    expect(screen.getByPlaceholderText('Tell us about the game...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('0 = Free')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Competitive' }));
+
+    expect(screen.getByPlaceholderText('e.g. 8.5')).toBeInTheDocument();
   });
 
   it('renders createLobby errors returned by the data layer', async () => {

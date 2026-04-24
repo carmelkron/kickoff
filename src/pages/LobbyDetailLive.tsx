@@ -9,7 +9,6 @@ import { canManageLobby } from '../lib/lobbyRoles';
 import { getJoinLobbyError, getJoinLobbyTargetStatus } from '../lib/validation';
 import type { ContributionType, Lobby, LobbyInvite, LobbyJoinRequest, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
 import { formatDateTime } from '../utils/format';
-import { formatAgeRange } from '../utils/age';
 import { loadSessionDistancePreference } from '../utils/distanceSource';
 import { haversineKm } from '../utils/geo';
 import { formatLocationLabel } from '../utils/location';
@@ -332,7 +331,6 @@ export default function LobbyDetailLive() {
   const pendingInviteCount = invites.filter((invite) => invite.status !== 'accepted').length;
   const readyTeamsCount = teams.length;
   const pendingRequestCount = joinRequests.length;
-  const ageRangeLabel = formatAgeRange(resolvedLobby.minAge, resolvedLobby.maxAge, lang);
   const descriptionNeedsClamp = Boolean(resolvedLobby.description && resolvedLobby.description.length > 180);
   const visibleDescription =
     resolvedLobby.description && descriptionNeedsClamp && !showFullDescription
@@ -345,7 +343,6 @@ export default function LobbyDetailLive() {
     resolvedLobby.fieldType
       ? `${resolvedLobby.fieldType === 'grass' ? '🌿' : resolvedLobby.fieldType === 'asphalt' ? '⬛' : '🏟️'} ${resolvedLobby.fieldType === 'grass' ? (lang === 'he' ? 'דשא' : 'Grass') : resolvedLobby.fieldType === 'asphalt' ? (lang === 'he' ? 'אספלט' : 'Asphalt') : (lang === 'he' ? 'אולם' : 'Indoor')}`
       : null,
-    ageRangeLabel,
     isCompetitive && resolvedLobby.minRating ? `${lang === 'he' ? 'מינימום' : 'Min'} ${Math.round(resolvedLobby.minRating)} ${lang === 'he' ? "נק'" : 'pts'}` : null,
     isCompetitive && resolvedLobby.minPointsPerGame != null ? `${lang === 'he' ? 'מינימום' : 'Min'} ${resolvedLobby.minPointsPerGame.toFixed(1)} ${lang === 'he' ? "נק'/משחק" : 'pts/game'}` : null,
   ].filter((item): item is string => Boolean(item));

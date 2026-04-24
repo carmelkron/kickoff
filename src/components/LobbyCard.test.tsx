@@ -53,8 +53,6 @@ function makeLobby(overrides: Partial<Lobby> = {}): Lobby {
     playersPerTeam: 2,
     minRating: undefined,
     minPointsPerGame: undefined,
-    minAge: undefined,
-    maxAge: undefined,
     isPrivate: false,
     price: 0,
     createdBy: 'organizer-1',
@@ -100,8 +98,6 @@ describe('LobbyCard', () => {
       viewerHasAccess: false,
       minRating: 120,
       minPointsPerGame: 7.5,
-      minAge: 18,
-      maxAge: 35,
       fieldType: 'asphalt',
     });
 
@@ -113,7 +109,6 @@ describe('LobbyCard', () => {
     expect(screen.getByText('Central Court, Haifa')).toBeInTheDocument();
     expect(screen.getByText('Locked')).toBeInTheDocument();
     expect(screen.getByText('Approval required')).toBeInTheDocument();
-    expect(screen.getByText('Ages 18-35')).toBeInTheDocument();
     expect(screen.getByText('150')).toBeInTheDocument();
     expect(screen.getByText('Min: 120 pts')).toBeInTheDocument();
     expect(screen.getByText('Min avg: 7.5 pts/game')).toBeInTheDocument();

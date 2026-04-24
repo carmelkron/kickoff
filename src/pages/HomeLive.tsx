@@ -16,7 +16,6 @@ import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { fetchLobbies, requestLobbyAccess, upsertLobbyMembership } from '../lib/appData';
 import type { FieldType, GameType, Lobby, Player } from '../types';
-import { formatAgeRange } from '../utils/age';
 import { HOME_FILTERS_SESSION_KEY, type Coords, type LocationMode, getDistanceSourceText } from '../utils/distanceSource';
 import { formatDateTime } from '../utils/format';
 import { haversineKm } from '../utils/geo';
@@ -246,7 +245,6 @@ function HomeLobbyFeedCard({
   const isFull = lobby.players.length >= lobby.maxPlayers;
   const primaryLabel = getLobbyPrimaryActionLabel(lobby, lang);
   const primaryDisabled = pendingActionId === lobby.id || lobby.viewerJoinRequestStatus === 'pending' || isFull;
-  const ageLabel = formatAgeRange(lobby.minAge, lobby.maxAge, lang);
   const fieldTypeLabel = getFieldTypeLabel(lobby.fieldType, lang);
   const fieldTypeIcon = getFieldTypeIcon(lobby.fieldType);
   const entryTile = getEntryTileContent(lobby, lang);
@@ -340,10 +338,6 @@ function HomeLobbyFeedCard({
             title={lang === 'he' ? 'תנאי כניסה' : 'Entry requirements'}
             items={entryTile.items}
           />
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {ageLabel && <MetaChip label={ageLabel} />}
         </div>
 
         {lobby.description && (
@@ -958,20 +952,6 @@ function StatusBadge({
     <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${classes}`}>
       {icon}
       <span>{label}</span>
-    </span>
-  );
-}
-
-function MetaChip({ label, tone = 'gray' }: { label: string; tone?: 'gray' | 'amber' }) {
-  return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-        tone === 'amber'
-          ? 'bg-amber-50 text-amber-700'
-          : 'bg-gray-100 text-gray-700'
-      }`}
-    >
-      {label}
     </span>
   );
 }

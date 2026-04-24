@@ -65,7 +65,6 @@ export interface Player {
   bio?: string;
   email?: string;
   photoUrl?: string;
-  birthdate?: string;
   homeLatitude?: number;
   homeLongitude?: number;
   homeAddress?: string;
@@ -87,8 +86,6 @@ export interface Lobby {
   playersPerTeam?: number;
   minRating?: number;
   minPointsPerGame?: number;
-  minAge?: number;
-  maxAge?: number;
   isPrivate: boolean;
   price?: number;
   description?: string;
@@ -286,7 +283,6 @@ export interface AuthUser {
   position?: string;
   bio?: string;
   photoUrl?: string;
-  birthdate?: string;
   ratingHistory: RatingEntry[];
   lobbyHistory: LobbyHistoryEntry[];
   skills?: ProfileSkill[];

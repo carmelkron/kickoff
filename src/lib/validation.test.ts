@@ -181,25 +181,6 @@ describe('validateCreateLobbyDraft', () => {
     expect(errors).toContain('Description must be 500 characters or fewer.');
   });
 
-  it('rejects invalid age ranges', () => {
-    const errors = validateCreateLobbyDraft(
-      {
-        title: 'Thursday Night',
-        address: '123 Gordon St',
-        city: 'Tel Aviv',
-        date: '2099-06-01',
-        time: '20:30',
-        numTeams: 2,
-        playersPerTeam: 5,
-        minAge: 30,
-        maxAge: 20,
-      },
-      new Date('2099-05-01T00:00:00.000Z'),
-    );
-
-    expect(errors).toContain('Minimum age cannot be greater than maximum age.');
-  });
-
   it('rejects invalid minimum points per game thresholds', () => {
     const errors = validateCreateLobbyDraft(
       {
@@ -227,8 +208,6 @@ describe('validateCreateLobbyDraft', () => {
         datetime: 'not-a-date',
         numTeams: 5,
         playersPerTeam: 20,
-        minAge: 5,
-        maxAge: 100,
         minPointsPerGame: Number.POSITIVE_INFINITY,
         price: 1000,
         description: 'x'.repeat(501),
@@ -240,8 +219,6 @@ describe('validateCreateLobbyDraft', () => {
     expect(errors).toContain('Number of teams must be between 2 and 4.');
     expect(errors).toContain('Players per team must be between 3 and 11.');
     expect(errors).toContain('Total max players must be between 6 and 44.');
-    expect(errors).toContain('Minimum age must be between 6 and 99.');
-    expect(errors).toContain('Maximum age must be between 6 and 99.');
     expect(errors).toContain('Minimum points per game must be between 0 and 99.99.');
     expect(errors).toContain('Price must be between 0 and 999.');
     expect(errors).toContain('Description must be 500 characters or fewer.');
@@ -274,29 +251,6 @@ describe('getJoinLobbyError', () => {
     expect(getJoinLobbyError(lobby, player, { allowExistingWaitlist: true })).toBeNull();
   });
 
-  it('blocks joining an age-restricted lobby without a birth date', () => {
-    const player = makePlayer();
-    const lobby = makeLobby({ minAge: 18, maxAge: 35 });
-
-    expect(getJoinLobbyError(lobby, player)).toBe('Add your birth date in your profile to join this age-restricted lobby.');
-  });
-
-  it('blocks players outside the age range on game day', () => {
-    const player = makePlayer({ birthdate: '2085-06-02' });
-    const lobby = makeLobby({ minAge: 18 });
-
-    expect(getJoinLobbyError(lobby, player)).toBe('This lobby is for players aged 18 and up.');
-  });
-
-  it('blocks players above the maximum age or with invalid birthdates', () => {
-    const tooOldPlayer = makePlayer({ birthdate: '1980-01-01' });
-    const invalidBirthdatePlayer = makePlayer({ birthdate: 'not-a-date' });
-    const lobby = makeLobby({ maxAge: 35, datetime: '2026-04-23T18:00:00.000Z' });
-
-    expect(getJoinLobbyError(lobby, tooOldPlayer)).toBe('This lobby is for players up to age 35.');
-    expect(getJoinLobbyError(lobby, invalidBirthdatePlayer)).toBe('Add a valid birth date in your profile to join this age-restricted lobby.');
-  });
-
   it('blocks players below the required competitive points per game threshold', () => {
     const player = makePlayer({ competitivePoints: 36, competitiveGamesPlayed: 6, competitivePointsPerGame: 6 });
     const lobby = makeLobby({ minPointsPerGame: 7.5 });
@@ -306,14 +260,11 @@ describe('getJoinLobbyError', () => {
 
   it('allows eligible players to join', () => {
     const player = makePlayer({
-      birthdate: '2000-04-23',
       competitivePoints: 50,
       competitiveGamesPlayed: 5,
       competitivePointsPerGame: 10,
     });
     const lobby = makeLobby({
-      minAge: 18,
-      maxAge: 35,
       minPointsPerGame: 7.5,
       datetime: '2026-04-23T18:00:00.000Z',
     });

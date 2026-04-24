@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { createLobby } from '../lib/appData';
 import { useAuth } from '../contexts/SupabaseAuthContext';
@@ -19,6 +20,7 @@ export default function CreateLobbyPage() {
   const [gameType, setGameType] = useState<GameType>('friendly');
   const [accessType, setAccessType] = useState<LobbyAccessType>('open');
   const [fieldType, setFieldType] = useState<FieldType | ''>('');
+  const [showOptionalSettings, setShowOptionalSettings] = useState(false);
   const [form, setForm] = useState({
     title: '',
     date: '',
@@ -26,8 +28,6 @@ export default function CreateLobbyPage() {
     numTeams: 2,
     playersPerTeam: 5,
     minPointsPerGame: '',
-    minAge: '',
-    maxAge: '',
     price: '',
     description: '',
   });
@@ -49,7 +49,7 @@ export default function CreateLobbyPage() {
     ? formatLocationLabel(selectedPlace.address, selectedPlace.city)
     : formatLocationLabel(manualLocation.address, manualLocation.city);
 
-  function setField(key: 'title' | 'date' | 'time' | 'minPointsPerGame' | 'minAge' | 'maxAge' | 'price' | 'description') {
+  function setField(key: 'title' | 'date' | 'time' | 'minPointsPerGame' | 'price' | 'description') {
     return (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setForm((prev) => ({ ...prev, [key]: event.target.value }));
     };
@@ -62,8 +62,6 @@ export default function CreateLobbyPage() {
 
     const numericPrice = form.price ? Number(form.price) : undefined;
     const minPointsPerGame = gameType === 'competitive' && form.minPointsPerGame ? Number(form.minPointsPerGame) : undefined;
-    const minAge = form.minAge ? Number(form.minAge) : undefined;
-    const maxAge = form.maxAge ? Number(form.maxAge) : undefined;
     const address = (selectedPlace?.address ?? manualLocation.address).trim();
     const city = (selectedPlace?.city ?? manualLocation.city).trim();
     const validationErrors = validateCreateLobbyDraft({
@@ -76,8 +74,6 @@ export default function CreateLobbyPage() {
       playersPerTeam: form.playersPerTeam,
       accessType,
       minPointsPerGame,
-      minAge,
-      maxAge,
       price: numericPrice,
       description: form.description,
     });
@@ -105,8 +101,6 @@ export default function CreateLobbyPage() {
         numTeams: form.numTeams,
         playersPerTeam: form.playersPerTeam,
         minPointsPerGame,
-        minAge,
-        maxAge,
         price: numericPrice,
         description: form.description || undefined,
         createdBy: currentUserId,
@@ -133,102 +127,33 @@ export default function CreateLobbyPage() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <Card>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {lang === 'he' ? 'גישה ללובי' : 'Lobby access'}
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setAccessType('open')}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
-                  accessType === 'open'
-                    ? 'bg-primary-600 text-white border-primary-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
-                }`}
-              >
-                {lang === 'he' ? 'פתוח' : 'Open'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setAccessType('locked')}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
-                  accessType === 'locked'
-                    ? 'bg-gray-900 text-white border-gray-900'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-                }`}
-              >
-                {lang === 'he' ? 'נעול' : 'Locked'}
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 mt-2">
-              {accessType === 'open'
-                ? (lang === 'he' ? 'כל משתמש יכול לפתוח את הלובי ולהצטרף לפי הזמינות.' : 'Anyone can open the lobby and join if space is available.')
-                : (lang === 'he' ? 'רק משתתפים, מוזמנים, או חברים של מי שכבר בפנים יוכלו להיכנס ללובי.' : 'Only participants, invited players, or friends of players already inside can access this lobby.')}
-            </p>
-          </div>
-        </Card>
-
-        <Card>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {lang === 'he' ? 'סוג משחק' : 'Game type'}
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setGameType('friendly')}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
-                  gameType === 'friendly'
-                    ? 'bg-green-500 text-white border-green-500'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-green-300'
-                }`}
-              >
-                {lang === 'he' ? '⚽ ידידותי' : '⚽ Friendly'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setGameType('competitive')}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
-                  gameType === 'competitive'
-                    ? 'bg-primary-600 text-white border-primary-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
-                }`}
-              >
-                {lang === 'he' ? '🏆 תחרותי' : '🏆 Competitive'}
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 mt-2">
-              {gameType === 'friendly'
-                ? (lang === 'he' ? 'משחק ידידותי, בלי חלוקת נקודות תחרותיות.' : 'Friendly game with no competitive points awarded.')
-                : (lang === 'he' ? 'משחק תחרותי, עם חלוקת נקודות אחרי דיווח תוצאה.' : 'Competitive game with points awarded after the result is submitted.')}
-            </p>
-          </div>
-        </Card>
-
-        {gameType === 'competitive' && (
-          <Card>
-            <Field label={lang === 'he' ? 'מינימום נקודות למשחק להצטרפות (אופציונלי)' : 'Minimum points per game to join (optional)'}>
-              <Input
-                type="number"
-                min="0"
-                max="99.99"
-                step="0.1"
-                value={form.minPointsPerGame}
-                onChange={setField('minPointsPerGame')}
-                placeholder={lang === 'he' ? 'למשל 8.5' : 'e.g. 8.5'}
+          <div className="grid gap-5">
+            <Field label={lang === 'he' ? 'גישה ללובי' : 'Lobby access'}>
+              <SegmentedChoice<LobbyAccessType>
+                value={accessType}
+                options={[
+                  { value: 'open', label: lang === 'he' ? 'פתוח' : 'Open' },
+                  { value: 'locked', label: lang === 'he' ? 'נעול' : 'Locked' },
+                ]}
+                onChange={setAccessType}
               />
             </Field>
-            <p className="text-xs text-gray-400">
-              {lang === 'he'
-                ? 'רק שחקנים שממוצע הנקודות התחרותיות שלהם למשחק עומד בסף הזה יוכלו להצטרף.'
-                : 'Only players whose average competitive points per game meets this bar will be able to join.'}
-            </p>
-          </Card>
-        )}
+
+            <Field label={lang === 'he' ? 'סוג משחק' : 'Game type'}>
+              <SegmentedChoice<GameType>
+                value={gameType}
+                options={[
+                  { value: 'friendly', label: lang === 'he' ? 'ידידותי' : 'Friendly' },
+                  { value: 'competitive', label: lang === 'he' ? 'תחרותי' : 'Competitive' },
+                ]}
+                onChange={setGameType}
+              />
+            </Field>
+          </div>
+        </Card>
 
         <Card>
-          <Field label={lang === 'he' ? 'שם המשחק / הלובי' : 'Game / Lobby name'}>
+          <Field label={lang === 'he' ? 'שם הלובי' : 'Lobby name'}>
             <Input
               placeholder={lang === 'he' ? 'למשל: משחק ערב בגורדון' : 'e.g. Evening game at Gordon'}
               value={form.title}
@@ -239,7 +164,7 @@ export default function CreateLobbyPage() {
         </Card>
 
         <Card>
-          <Field label={lang === 'he' ? 'מיקום המגרש' : 'Field location'}>
+          <Field label={lang === 'he' ? 'מיקום' : 'Location'}>
             <GooglePlacesAutocomplete
               value={locationDisplayValue}
               onSelect={(place) => {
@@ -261,7 +186,7 @@ export default function CreateLobbyPage() {
                   setSelectedPlace(null);
                   setManualLocation((prev) => ({ ...prev, address: event.target.value }));
                 }}
-                placeholder={lang === 'he' ? 'גיבוי ידני: כתובת' : 'Manual fallback: address'}
+                placeholder={lang === 'he' ? 'כתובת ידנית' : 'Manual address'}
               />
               <Input
                 value={manualLocation.city}
@@ -269,14 +194,9 @@ export default function CreateLobbyPage() {
                   setSelectedPlace(null);
                   setManualLocation((prev) => ({ ...prev, city: event.target.value }));
                 }}
-                placeholder={lang === 'he' ? 'גיבוי ידני: עיר' : 'Manual fallback: city'}
+                placeholder={lang === 'he' ? 'עיר ידנית' : 'Manual city'}
               />
             </div>
-            <p className="mt-2 text-xs text-gray-400">
-              {lang === 'he'
-                ? 'אם החיפוש לא מוצא את המיקום או שמפות לא נטענות, אפשר עדיין לפרסם לובי עם כתובת ועיר ידנית.'
-                : 'If search does not find the location or Maps fails to load, you can still publish with a manual address and city.'}
-            </p>
           </Field>
         </Card>
 
@@ -332,87 +252,76 @@ export default function CreateLobbyPage() {
             />
           </div>
 
-          <div className="bg-primary-50 rounded-xl px-4 py-3 flex items-center justify-between">
+          <div className="rounded-xl bg-primary-50 px-4 py-3 flex items-center justify-between">
             <span className="text-sm text-primary-700 font-medium">
-              {lang === 'he' ? 'סה"כ שחקנים מקסימלי:' : 'Total max players:'}
+              {lang === 'he' ? 'סה"כ שחקנים מקסימלי' : 'Total max players'}
             </span>
             <span className="text-lg font-bold text-primary-700">{maxPlayers}</span>
           </div>
         </Card>
 
         <Card>
-          <Field label={t.create.price}>
-            <Input type="number" min="0" value={form.price} onChange={setField('price')} placeholder={t.create.pricePlaceholder} />
-          </Field>
-        </Card>
-
-        <Card>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {lang === 'he' ? 'סוג מגרש (אופציונלי)' : 'Field type (optional)'}
-            </label>
-            <div className="flex gap-2">
-              {([
-                ['grass', lang === 'he' ? '🌿 דשא' : '🌿 Grass'],
-                ['asphalt', lang === 'he' ? '⬛ אספלט' : '⬛ Asphalt'],
-                ['indoor', lang === 'he' ? '🏟️ אולם' : '🏟️ Indoor'],
-              ] as const).map(([val, label]) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setFieldType((prev) => (prev === val ? '' : val))}
-                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all border ${
-                    fieldType === val
-                      ? 'bg-primary-600 text-white border-primary-600'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+          <button
+            type="button"
+            onClick={() => setShowOptionalSettings((prev) => !prev)}
+            className="flex w-full items-center justify-between text-start"
+            aria-expanded={showOptionalSettings}
+          >
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">
+                {lang === 'he' ? 'הגדרות אופציונליות' : 'Optional settings'}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {lang === 'he' ? 'פתח רק אם צריך להוסיף עוד פרטים.' : 'Open only if you want to add more details.'}
+              </p>
             </div>
-          </div>
+            {showOptionalSettings ? <ChevronUp size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
+          </button>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {lang === 'he' ? 'טווח גילאים (אופציונלי)' : 'Age range (optional)'}
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                type="number"
-                min="6"
-                max="99"
-                value={form.minAge}
-                onChange={setField('minAge')}
-                placeholder={lang === 'he' ? 'מגיל' : 'Min age'}
-              />
-              <Input
-                type="number"
-                min="6"
-                max="99"
-                value={form.maxAge}
-                onChange={setField('maxAge')}
-                placeholder={lang === 'he' ? 'עד גיל' : 'Max age'}
-              />
+          {showOptionalSettings && (
+            <div className="space-y-4 border-t border-gray-100 pt-4">
+              <Field label={lang === 'he' ? 'סוג מגרש' : 'Field type'}>
+                <SegmentedChoice<FieldType | ''>
+                  value={fieldType}
+                  options={[
+                    { value: '', label: lang === 'he' ? 'לא הוגדר' : 'Not set' },
+                    { value: 'grass', label: lang === 'he' ? 'דשא' : 'Grass' },
+                    { value: 'asphalt', label: lang === 'he' ? 'אספלט' : 'Asphalt' },
+                    { value: 'indoor', label: lang === 'he' ? 'אולם' : 'Indoor' },
+                  ]}
+                  onChange={setFieldType}
+                />
+              </Field>
+
+              {gameType === 'competitive' && (
+                <Field label={lang === 'he' ? 'מינימום נקודות למשחק' : 'Minimum points per game'}>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="99.99"
+                    step="0.1"
+                    value={form.minPointsPerGame}
+                    onChange={setField('minPointsPerGame')}
+                    placeholder={lang === 'he' ? 'למשל 8.5' : 'e.g. 8.5'}
+                  />
+                </Field>
+              )}
+
+              <Field label={t.create.price}>
+                <Input type="number" min="0" value={form.price} onChange={setField('price')} placeholder={t.create.pricePlaceholder} />
+              </Field>
+
+              <Field label={t.create.description}>
+                <textarea
+                  value={form.description}
+                  onChange={setField('description')}
+                  rows={3}
+                  placeholder={t.create.descriptionPlaceholder}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
+                />
+              </Field>
             </div>
-            <p className="mt-2 text-xs text-gray-400">
-              {lang === 'he'
-                ? 'רק שחקנים שתאריך הלידה שלהם מתאים לטווח יוכלו להצטרף.'
-                : 'Only players whose birth date matches this range will be able to join.'}
-            </p>
-          </div>
-        </Card>
-
-        <Card>
-          <Field label={t.create.description}>
-            <textarea
-              value={form.description}
-              onChange={setField('description')}
-              rows={3}
-              placeholder={t.create.descriptionPlaceholder}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
-            />
-          </Field>
+          )}
         </Card>
 
         {error && <p className="text-red-500 text-sm text-center">{error}</p>}
@@ -448,5 +357,34 @@ function Input(props: InputHTMLAttributes<HTMLInputElement>) {
       {...props}
       className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-transparent"
     />
+  );
+}
+
+function SegmentedChoice<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={`flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
+            value === option.value
+              ? 'border-primary-600 bg-primary-600 text-white'
+              : 'border-gray-200 bg-white text-gray-600 hover:border-primary-300'
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }

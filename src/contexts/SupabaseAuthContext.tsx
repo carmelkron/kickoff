@@ -23,7 +23,6 @@ type ProfileRow = {
   position: string | null;
   bio: string | null;
   photo_url: string | null;
-  birthdate: string | null;
   rating_history: RatingEntry[];
   lobby_history: LobbyHistoryEntry[];
   home_latitude: number | null;
@@ -45,7 +44,6 @@ type RegisterInput = {
   avatarColor: string;
   position: string;
   bio?: string;
-  birthdate?: string;
   photoFile?: File;
   homeLatitude?: number;
   homeLongitude?: number;
@@ -93,7 +91,6 @@ function mapProfileToAuthUser(
     position: profile.position ?? undefined,
     bio: profile.bio ?? undefined,
     photoUrl: profile.photo_url ?? undefined,
-    birthdate: profile.birthdate ?? undefined,
     skills,
     ratingHistory: profile.rating_history ?? [],
     lobbyHistory: profile.lobby_history ?? [],
@@ -135,7 +132,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       avatarColor?: string;
       position?: string;
       bio?: string;
-      birthdate?: string;
       photoUrl?: string | null;
       homeLatitude?: number;
       homeLongitude?: number;
@@ -181,10 +177,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       overrides?.photoUrl ??
       (typeof metadata.photoUrl === 'string' ? metadata.photoUrl : null);
 
-    const birthdate =
-      overrides?.birthdate ??
-      (typeof metadata.birthdate === 'string' ? metadata.birthdate : undefined);
-
     const { error: insertProfileError } = await supabase.from('profiles').insert({
       id: authUser.id,
       auth_user_id: authUser.id,
@@ -196,7 +188,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       games_played: 0,
       position: position ? normalizeText(position) : null,
       bio: bio ? normalizeText(bio) : null,
-      birthdate: birthdate ?? null,
       photo_url: photoUrl,
       rating_history: [],
       lobby_history: [],
@@ -216,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function refresh(authUserId: string | null) {
     const { data: profilesData, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, birthdate, rating_history, lobby_history, home_latitude, home_longitude, home_address')
+      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, rating_history, lobby_history, home_latitude, home_longitude, home_address')
       .order('name', { ascending: true });
 
     if (profilesError) {
@@ -351,7 +342,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       position: data.position,
       bio: data.bio,
       photoFile: data.photoFile ?? null,
-      birthdate: data.birthdate,
     });
 
     if (validationErrors.length > 0) {
@@ -368,7 +358,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           avatarColor: data.avatarColor,
           position: data.position ? normalizeText(data.position) : null,
           bio: data.bio ? normalizeText(data.bio) : null,
-          birthdate: data.birthdate ?? null,
         },
       },
     });
@@ -404,7 +393,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           avatarColor: data.avatarColor,
           position: data.position,
           bio: data.bio,
-          birthdate: data.birthdate,
           photoUrl: recoveredPhotoUrl,
         });
 
@@ -434,11 +422,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await ensureProfileForAuthUser(authUser, {
         name: normalizeText(data.name),
         initials: data.initials,
-        avatarColor: data.avatarColor,
-        position: data.position,
-        bio: data.bio,
-        birthdate: data.birthdate,
-        photoUrl,
+          avatarColor: data.avatarColor,
+          position: data.position,
+          bio: data.bio,
+          photoUrl,
         homeLatitude: data.homeLatitude,
         homeLongitude: data.homeLongitude,
         homeAddress: data.homeAddress,

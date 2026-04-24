@@ -151,8 +151,6 @@ function makeLobby(overrides: Record<string, unknown> = {}) {
     playersPerTeam: 5,
     minRating: 4,
     minPointsPerGame: null,
-    minAge: null,
-    maxAge: null,
     isPrivate: false,
     price: null,
     description: 'Friendly match',
