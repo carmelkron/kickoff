@@ -124,10 +124,12 @@ export default function ProfileLive() {
       return [];
     }
 
-    return profile.friends
+    const friendIds = isMe && currentUser ? currentUser.friends : profile.friends;
+
+    return friendIds
       .map((friendId) => allUsers.find((user) => user.id === friendId))
       .filter((user): user is AuthUser => Boolean(user));
-  }, [allUsers, profile]);
+  }, [allUsers, currentUser, isMe, profile]);
 
   type FriendStatus = 'self' | 'friend' | 'sent' | 'pending' | 'none';
 
@@ -345,7 +347,7 @@ export default function ProfileLive() {
       <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatBox value={profile.gamesPlayed} label={lang === 'he' ? 'משחקים' : 'Games'} />
-          <StatBox value={friendsList.length} label={lang === 'he' ? 'קשרים' : 'Connections'} color="text-primary-700" />
+          <StatBox value={friendsList.length} label={lang === 'he' ? 'חברים' : 'Friends'} color="text-primary-700" />
           <StatBox
             value={competitiveGamesPlayed > 0 ? competitivePointsPerGame.toFixed(1) : '—'}
             label={lang === 'he' ? 'נק׳ למשחק' : 'Pts / game'}
@@ -413,7 +415,7 @@ export default function ProfileLive() {
 
       {friendsList.length > 0 ? (
         <ProfileSection
-          title={lang === 'he' ? 'קשרים' : 'Connections'}
+          title={lang === 'he' ? 'חברים' : 'Friends'}
           action={(
             <button
               type="button"

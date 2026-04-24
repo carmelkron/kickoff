@@ -116,7 +116,7 @@ describe('ProfileLive', () => {
     const user = userEvent.setup();
     renderProfile('/profile/user-1');
 
-    expect(await screen.findByRole('heading', { name: 'Connections' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Friends' })).toBeInTheDocument();
     expect(screen.getByText('Best Friend')).toBeInTheDocument();
     expect(screen.getByText('My Profile')).toBeInTheDocument();
     expect(screen.queryByText('Friend Requests (1)')).not.toBeInTheDocument();
