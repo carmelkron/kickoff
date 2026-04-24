@@ -35,6 +35,7 @@ export interface LobbyHistoryEntry {
   date: string;
   city: string;
   fieldName?: string;
+  gameType?: GameType;
   ratingChange: number;
 }
 

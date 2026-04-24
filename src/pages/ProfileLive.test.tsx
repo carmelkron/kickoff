@@ -125,7 +125,7 @@ describe('ProfileLive', () => {
       expect(acceptFriendRequestMock).toHaveBeenCalledWith('user-2');
     });
 
-    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.click(screen.getByRole('button', { name: 'Edit profile' }));
     expect(await screen.findByText('Edit Profile Page')).toBeInTheDocument();
   });
 
@@ -201,7 +201,7 @@ describe('ProfileLive', () => {
     });
   });
 
-  it('renders competitive and lobby history and lets the viewer switch tabs', async () => {
+  it('renders competitive and lobby history in one linear page', async () => {
     currentUser = makeUser('viewer-1', { name: 'Viewer User' });
     allUsers = [
       currentUser,
@@ -239,15 +239,12 @@ describe('ProfileLive', () => {
       },
     ]);
 
-    const user = userEvent.setup();
     renderProfile('/profile/user-1');
 
     expect(await screen.findByText('Competitive points history')).toBeInTheDocument();
     expect(screen.getByText('Ranked Night')).toBeInTheDocument();
     expect(screen.getByText(/Organizer note:/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Games' }));
-    expect(await screen.findByText('Recent Games')).toBeInTheDocument();
+    expect(screen.getByText('Recent Games')).toBeInTheDocument();
     expect(screen.getByText('Friendly Match')).toBeInTheDocument();
   });
 });

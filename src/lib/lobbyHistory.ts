@@ -1,4 +1,4 @@
-import type { LobbyHistoryEntry, LobbyStatus } from '../types';
+import type { GameType, LobbyHistoryEntry, LobbyStatus } from '../types';
 
 export type LobbyHistoryMembershipRow = {
   lobby_id: string;
@@ -10,6 +10,7 @@ export type LobbyHistoryLobbyRow = {
   title: string;
   city: string;
   datetime: string;
+  game_type?: GameType | null;
   status?: LobbyStatus | null;
 };
 
@@ -34,6 +35,7 @@ export function buildLobbyHistoryEntries(
       lobbyTitle: lobby.title,
       date: lobby.datetime,
       city: lobby.city,
+      gameType: lobby.game_type ?? 'friendly',
       ratingChange: 0,
     }));
 }

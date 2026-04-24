@@ -10,6 +10,8 @@ import EditLobby from './pages/EditLobbyPage';
 import Register from './pages/RegisterPage';
 import Login from './pages/LoginLive';
 import Profile from './pages/ProfileLive';
+import ProfileFriendsPage from './pages/ProfileFriendsPage';
+import ProfileHistoryPage from './pages/ProfileHistoryPage';
 import EditProfile from './pages/EditProfilePage';
 import NotificationsPage from './pages/NotificationsPage';
 import MyNetworkPage from './pages/MyNetworkPage';
@@ -36,6 +38,8 @@ export default function App() {
                   <Route path="/lobby/:id" element={<LobbyDetail />} />
                   <Route path="/lobby/:id/edit" element={<EditLobby />} />
                   <Route path="/profile/:id" element={<Profile />} />
+                  <Route path="/profile/:id/friends" element={<ProfileFriendsPage />} />
+                  <Route path="/profile/:id/history" element={<ProfileHistoryPage />} />
                   <Route path="/profile/:id/edit" element={<EditProfile />} />
                 </Route>
                 <Route path="/register" element={<Register />} />

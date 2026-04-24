@@ -708,13 +708,13 @@ export async function fetchProfileLobbyHistory(profileId: string): Promise<Lobby
 
   const withStatus = await supabase
     .from('lobbies')
-    .select('id, title, city, datetime, status')
+    .select('id, title, city, datetime, game_type, status')
     .in('id', joinedLobbyIds);
 
   if (!withStatus.error) {
     return buildLobbyHistoryEntries(
       resolvedMembershipRows,
-      (withStatus.data ?? []) as Array<Pick<LobbyRow, 'id' | 'title' | 'city' | 'datetime' | 'status'>>,
+      (withStatus.data ?? []) as Array<Pick<LobbyRow, 'id' | 'title' | 'city' | 'datetime' | 'game_type' | 'status'>>,
     );
   }
 
@@ -724,7 +724,7 @@ export async function fetchProfileLobbyHistory(profileId: string): Promise<Lobby
 
   const fallback = await supabase
     .from('lobbies')
-    .select('id, title, city, datetime')
+    .select('id, title, city, datetime, game_type')
     .in('id', joinedLobbyIds);
 
   if (fallback.error) {
@@ -733,7 +733,7 @@ export async function fetchProfileLobbyHistory(profileId: string): Promise<Lobby
 
   return buildLobbyHistoryEntries(
     resolvedMembershipRows,
-    ((fallback.data ?? []) as Array<Pick<LobbyRow, 'id' | 'title' | 'city' | 'datetime'>>).map((row) => ({
+    ((fallback.data ?? []) as Array<Pick<LobbyRow, 'id' | 'title' | 'city' | 'datetime' | 'game_type'>>).map((row) => ({
       ...row,
       status: 'active',
     })),

@@ -27,6 +27,7 @@ describe('buildLobbyHistoryEntries', () => {
         lobbyTitle: 'Past Game B',
         date: '2026-04-12T18:00:00.000Z',
         city: 'Beer Sheva',
+        gameType: 'friendly',
         ratingChange: 0,
       },
       {
@@ -34,6 +35,7 @@ describe('buildLobbyHistoryEntries', () => {
         lobbyTitle: 'Past Game A',
         date: '2026-04-10T18:00:00.000Z',
         city: 'Tel Aviv',
+        gameType: 'friendly',
         ratingChange: 0,
       },
     ]);
@@ -52,6 +54,7 @@ describe('buildLobbyHistoryEntries', () => {
         lobbyTitle: 'Legacy Game',
         date: '2026-04-01T18:00:00.000Z',
         city: 'Netanya',
+        gameType: 'friendly',
         ratingChange: 0,
       },
     ]);
