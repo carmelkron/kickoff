@@ -10,7 +10,7 @@ import { getJoinLobbyError, getJoinLobbyTargetStatus } from '../lib/validation';
 import type { ContributionType, Lobby, LobbyInvite, LobbyJoinRequest, LobbyResultSummary, LobbyTeamAssignment, TeamColor } from '../types';
 import { formatDateTime } from '../utils/format';
 import { formatAgeRange } from '../utils/age';
-import { getDistanceSourceText, loadSessionDistancePreference } from '../utils/distanceSource';
+import { loadSessionDistancePreference } from '../utils/distanceSource';
 import { haversineKm } from '../utils/geo';
 import { formatLocationLabel } from '../utils/location';
 import LocationPreviewMap from '../components/LocationPreviewMap';
@@ -251,7 +251,6 @@ export default function LobbyDetailLive() {
     refPoint && hasCoords
       ? haversineKm(refPoint.lat, refPoint.lng, resolvedLobby.latitude!, resolvedLobby.longitude!)
       : null;
-  const distanceSourceText = getDistanceSourceText(hasCurrentLocation ? 'current' : 'home', lang, 'full');
   const mapsUrl = hasCoords
     ? `https://www.google.com/maps/dir/?api=1&destination=${resolvedLobby.latitude},${resolvedLobby.longitude}`
     : `https://maps.google.com/?q=${encodeURIComponent(formatLocationLabel(resolvedLobby.address, resolvedLobby.city))}`;
@@ -330,6 +329,9 @@ export default function LobbyDetailLive() {
   const organizerCandidatePlayers = resolvedLobby.players.filter((player) => (
     player.id !== resolvedLobby.createdBy && !resolvedLobby.organizerIds.includes(player.id)
   ));
+  const pendingInviteCount = invites.filter((invite) => invite.status !== 'accepted').length;
+  const readyTeamsCount = teams.length;
+  const pendingRequestCount = joinRequests.length;
   const ageRangeLabel = formatAgeRange(resolvedLobby.minAge, resolvedLobby.maxAge, lang);
   const descriptionNeedsClamp = Boolean(resolvedLobby.description && resolvedLobby.description.length > 180);
   const visibleDescription =
@@ -961,9 +963,36 @@ export default function LobbyDetailLive() {
         </div>
       )}
 
+      {activeTab === 'manage' && canManageCurrentLobby && (
+        <div className="mb-4 grid gap-3 sm:grid-cols-4">
+          <ManageStatTile
+            label={lang === 'he' ? 'הרכבים' : 'Teams'}
+            value={readyTeamsCount > 0 ? `${readyTeamsCount}` : (lang === 'he' ? 'טרם נוצרו' : 'Not ready')}
+          />
+          <ManageStatTile
+            label={lang === 'he' ? 'בקשות' : 'Requests'}
+            value={`${pendingRequestCount}`}
+          />
+          <ManageStatTile
+            label={lang === 'he' ? 'הזמנות' : 'Invites'}
+            value={`${pendingInviteCount}`}
+          />
+          <ManageStatTile
+            label={lang === 'he' ? 'מארגנים' : 'Organizers'}
+            value={`${1 + secondaryOrganizerPlayers.length}`}
+          />
+        </div>
+      )}
+
       {activeTab === 'manage' && isCreator && (
-        <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
+        <ManageSection
+          title={lang === 'he' ? 'מארגנים משניים' : 'Secondary organizers'}
+          description={lang === 'he'
+            ? 'כאן אפשר להוסיף או להסיר שותפים לניהול הלובי.'
+            : 'Add or remove management partners for this lobby here.'}
+          badge={lang === 'he' ? `${secondaryOrganizerPlayers.length} פעילים` : `${secondaryOrganizerPlayers.length} active`}
+        >
+          <div className="hidden">
             <div>
               <p className="text-sm font-semibold text-gray-900">
                 {lang === 'he' ? 'מארגנים משניים' : 'Secondary organizers'}
@@ -1050,11 +1079,18 @@ export default function LobbyDetailLive() {
               </p>
             )}
           </div>
-        </div>
+        </ManageSection>
       )}
 
       {activeTab === 'manage' && canManageCurrentLobby && (
-        <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 p-4">
+        <ManageSection
+          title={lang === 'he' ? 'הרכבים' : 'Lineups'}
+          description={teams.length > 0
+            ? (lang === 'he' ? 'ההרכבים כבר נוצרו ואפשר לחדד אותם מכאן.' : 'The lineups are ready and can be fine-tuned here.')
+            : (lang === 'he' ? 'כשהלובי מלא וכל העמדות מוגדרות, אפשר ליצור כאן הרכבים.' : 'Once the lobby is full and every position is set, you can create lineups here.')}
+          badge={teams.length > 0 ? `${teams.length}` : undefined}
+          defaultOpen={canGenerateTeams || teams.length > 0}
+        >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-primary-800">
@@ -1078,11 +1114,18 @@ export default function LobbyDetailLive() {
                 : (lang === 'he' ? 'צור הרכבים' : 'Create teams')}
             </button>
           </div>
-        </div>
+        </ManageSection>
       )}
 
       {activeTab === 'manage' && isCreator && resolvedLobby.accessType === 'locked' && (
-        <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+        <ManageSection
+          title={lang === 'he' ? 'הזמנת חברים' : 'Invites'}
+          description={lang === 'he'
+            ? 'אפשר להזמין שחקנים מתאימים ישירות מכאן.'
+            : 'Invite eligible players directly from here.'}
+          badge={lang === 'he' ? `${invites.length} מוזמנים` : `${invites.length} invited`}
+          defaultOpen={inviteCandidates.length > 0}
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-gray-900">
@@ -1159,12 +1202,19 @@ export default function LobbyDetailLive() {
               </p>
             )}
           </div>
-        </div>
+        </ManageSection>
       )}
 
       {activeTab === 'manage' && canManageCurrentLobby && resolvedLobby.accessType === 'locked' && joinRequests.length > 0 && (
-        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-          <div className="flex items-start justify-between gap-3">
+        <ManageSection
+          title={lang === 'he' ? 'בקשות כניסה' : 'Access requests'}
+          description={lang === 'he'
+            ? 'שחקנים שמחכים לאישור שלך ללובי הנעול.'
+            : 'Players waiting for your approval to enter this locked lobby.'}
+          badge={lang === 'he' ? `${joinRequests.length} ממתינים` : `${joinRequests.length} pending`}
+          defaultOpen
+        >
+          <div className="hidden">
             <div>
               <p className="text-sm font-semibold text-amber-900">
                 {lang === 'he' ? 'בקשות כניסה ללובי' : 'Lobby access requests'}
@@ -1217,7 +1267,7 @@ export default function LobbyDetailLive() {
               </div>
             ))}
           </div>
-        </div>
+        </ManageSection>
       )}
 
       {activeTab === 'manage' && canManageCurrentLobby && isCompetitive && teams.length > 0 && (
@@ -1302,9 +1352,6 @@ export default function LobbyDetailLive() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">{lang === 'he' ? 'ניווט' : 'Navigation'}</p>
-                  {distanceFromUserKm != null && (
-                    <p className="mt-1 text-xs text-gray-500">{distanceSourceText}</p>
-                  )}
                 </div>
                 <div className="flex gap-2">
                   <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50">
@@ -1356,6 +1403,53 @@ export default function LobbyDetailLive() {
             </details>
           </div>
 
+          {teams.length > 0 && (
+            <div className="rounded-2xl border border-primary-100 bg-primary-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-primary-800">
+                    {lang === 'he' ? 'ההרכבים מוכנים' : 'Teams are ready'}
+                  </h2>
+                  <p className="mt-1 text-xs text-primary-700">
+                    {lang === 'he'
+                      ? 'החלוקה לקבוצות כבר נשמרה. לפרטי מלאים אפשר לעבור לטאב השחקנים.'
+                      : 'The team split is already saved. Open the Players tab for the full lineup.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('players')}
+                  className="rounded-xl border border-primary-200 bg-white px-3 py-2 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100"
+                >
+                  {lang === 'he' ? 'פתח שחקנים' : 'Open players'}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {teams.map((assignment) => (
+                  <div key={assignment.team.id} className="rounded-2xl bg-white px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-block h-3 w-3 rounded-full ${teamColorClassName(assignment.team.color)}`} />
+                        <p className="text-sm font-semibold text-gray-900">
+                          {lang === 'he'
+                            ? `קבוצה ${getTeamColorLabel(assignment.team.color, lang)}`
+                            : `${getTeamColorLabel(assignment.team.color, lang)} Team`}
+                        </p>
+                      </div>
+                      <span className="text-xs font-medium text-gray-500">
+                        {assignment.players.length} {lang === 'he' ? 'שחקנים' : 'players'}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs leading-6 text-gray-600">
+                      {assignment.players.map((player) => player.name).join(' • ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {lobbyResult && (
             <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <div className="mb-4">
@@ -1368,7 +1462,7 @@ export default function LobbyDetailLive() {
               </div>
               {myTeamAssignment && myTeamResult && (
                 <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50 px-4 py-4">
-                  <div className="flex items-start justify-between gap-3">
+          <div className="hidden">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">
                         {lang === 'he' ? 'הסיכום האישי שלכם' : 'Your summary'}
@@ -1910,5 +2004,51 @@ function OverviewTile({
       <p className="mt-3 text-sm font-semibold leading-6 text-gray-900">{value}</p>
       {helper ? <p className="mt-1 text-xs text-gray-500">{helper}</p> : null}
     </div>
+  );
+}
+
+function ManageStatTile({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-gray-900">{value}</p>
+    </div>
+  );
+}
+
+function ManageSection({
+  title,
+  description,
+  badge,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  description?: string;
+  badge?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm" open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{title}</p>
+          {description ? <p className="mt-1 text-xs text-gray-500">{description}</p> : null}
+        </div>
+        {badge ? (
+          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+            {badge}
+          </span>
+        ) : null}
+      </summary>
+      <div className="mt-4">{children}</div>
+    </details>
   );
 }
