@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, Star } from 'lucide-react';
+import { Star } from 'lucide-react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { fetchLobbyById, hasAlreadyRated, submitLobbyRatings } from '../lib/appData';
@@ -78,9 +79,9 @@ export default function PostGameRating() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-20 text-center">
         <p className="text-gray-500">{lang === 'he' ? 'המשחק לא נמצא' : 'Game not found'}</p>
-        <button onClick={() => navigate('/')} className="mt-4 text-primary-600 underline">
-          {lang === 'he' ? 'חזרה' : 'Back'}
-        </button>
+        <div className="mt-4">
+          <BackButton onClick={() => navigate(-1)} />
+        </div>
       </div>
     );
   }
@@ -107,12 +108,7 @@ export default function PostGameRating() {
         <p className="text-gray-500 mb-6">
           {lang === 'he' ? 'הדירוגים הוגשו בצורה אנונימית' : 'Your ratings were submitted anonymously'}
         </p>
-        <button
-          onClick={() => navigate(`/lobby/${id}`)}
-          className="px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-2xl transition-colors"
-        >
-          {lang === 'he' ? 'חזרה למשחק' : 'Back to game'}
-        </button>
+        <BackButton onClick={() => navigate(-1)} />
       </div>
     );
   }
@@ -149,10 +145,7 @@ export default function PostGameRating() {
 
   return (
     <main className="max-w-lg mx-auto px-4 py-8">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-gray-500 hover:text-primary-600 mb-6 transition-colors">
-        <ChevronLeft size={16} />
-        {lang === 'he' ? 'חזרה' : 'Back'}
-      </button>
+      <BackButton onClick={() => navigate(-1)} className="mb-6" />
 
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">{lang === 'he' ? 'דרג את המשחק' : 'Rate the game'}</h1>

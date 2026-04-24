@@ -1,6 +1,6 @@
-import { ChevronLeft } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import NetworkRecommendationCard from '../components/network/NetworkRecommendationCard';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
@@ -89,14 +89,7 @@ export default function NetworkDiscoveryBucketPage() {
   return (
     <section className="space-y-4">
       <header className="rounded-[30px] border border-[var(--app-border)] bg-[var(--panel)] p-5 shadow-[0_18px_50px_rgba(7,19,16,0.04)]">
-        <button
-          type="button"
-          onClick={() => navigate('/network')}
-          className="mb-4 flex items-center gap-1 text-sm text-[var(--muted)] transition-colors hover:text-[var(--accent)]"
-        >
-          <ChevronLeft size={16} />
-          {lang === 'he' ? 'חזרה לרשת שלי' : 'Back to my network'}
-        </button>
+        <BackButton onClick={() => navigate(-1)} className="mb-4" />
 
         <h1 className="text-2xl font-semibold tracking-tight text-[var(--text)]">
           {getNetworkBucketLabel(resolvedBucket, lang)}

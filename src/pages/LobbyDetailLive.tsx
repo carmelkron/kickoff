@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { AlertCircle, ChevronLeft, Clock, ExternalLink, Handshake, LoaderCircle, Lock, MapPin, Pencil, Share2, Trash2, Trophy, Users } from 'lucide-react';
+import { AlertCircle, Clock, ExternalLink, Handshake, LoaderCircle, Lock, MapPin, Pencil, Share2, Trash2, Trophy, Users } from 'lucide-react';
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { approveLobbyJoinRequest, assignLobbyOrganizer, createLobbyInvite, declineLobbyJoinRequest, deleteLobby, deleteLobbyMembership, fetchContributions, fetchLobbyById, fetchLobbyInvites, fetchLobbyJoinRequests, fetchLobbyResult, fetchLobbyShareToken, fetchLobbyTeams, generateLobbyTeams, passLobbyWaitlistSpot, removeLobbyOrganizer, requestLobbyAccess, submitCompetitiveLobbyResult, swapLobbyTeamPlayers, toggleContribution, upsertLobbyMembership } from '../lib/appData';
@@ -214,9 +215,9 @@ export default function LobbyDetailLive() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-20 text-center">
         <p className="text-gray-500 text-lg">{error || (lang === 'he' ? 'המשחק לא נמצא' : 'Game not found')}</p>
-        <button onClick={() => navigate('/')} className="mt-4 text-primary-600 underline">
-          {t.lobby.back}
-        </button>
+        <div className="mt-4">
+          <BackButton onClick={() => navigate(-1)} />
+        </div>
       </div>
     );
   }
@@ -793,10 +794,7 @@ export default function LobbyDetailLive() {
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
       <div className="mb-4">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-gray-500 hover:text-primary-600 transition-colors">
-          <ChevronLeft size={16} />
-          {t.lobby.back}
-        </button>
+        <BackButton onClick={() => navigate(-1)} />
       </div>
 
       <div className="mb-4 rounded-[28px] border border-gray-100 bg-white p-5 shadow-sm">

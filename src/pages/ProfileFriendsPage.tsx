@@ -1,6 +1,7 @@
-import { Search, Trophy, ChevronLeft } from 'lucide-react';
+import { Search, Trophy } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import BackButton from '../components/BackButton';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 
@@ -51,22 +52,16 @@ export default function ProfileFriendsPage() {
     return (
       <div className="mx-auto max-w-3xl px-4 py-20 text-center">
         <p className="text-gray-500">{lang === 'he' ? 'המשתמש לא נמצא' : 'User not found'}</p>
-        <button onClick={() => navigate(-1)} className="mt-4 text-primary-600 underline">
-          {lang === 'he' ? 'חזרה' : 'Back'}
-        </button>
+        <div className="mt-4">
+          <BackButton onClick={() => navigate(-1)} />
+        </div>
       </div>
     );
   }
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
-      <button
-        onClick={() => navigate(`/profile/${profile.id}`)}
-        className="mb-6 flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-primary-600"
-      >
-        <ChevronLeft size={16} />
-        {lang === 'he' ? 'חזרה לפרופיל' : 'Back to profile'}
-      </button>
+      <BackButton onClick={() => navigate(-1)} className="mb-6" />
 
       <section className="mb-4 rounded-[28px] border border-gray-100 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4">

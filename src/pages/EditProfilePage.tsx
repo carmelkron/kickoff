@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Camera, ChevronLeft } from 'lucide-react';
+import { Camera } from 'lucide-react';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useLang } from '../contexts/LanguageContext';
 import { updateProfile, updateHomeLocation } from '../lib/appData';
@@ -9,6 +9,7 @@ import { uploadAvatar } from '../lib/storage';
 import { MAX_PROFILE_SKILLS, sanitizeProfileSkills, validateProfileSkills } from '../lib/validation';
 import GooglePlacesAutocomplete, { type PlaceResult } from '../components/GooglePlacesAutocomplete';
 import SelectedPlaceNotice from '../components/SelectedPlaceNotice';
+import BackButton from '../components/BackButton';
 import { formatLocationLabel } from '../utils/location';
 
 const POSITIONS_HE = ['שוער', 'הגנה', 'קישור', 'התקפה'];
@@ -158,10 +159,7 @@ export default function EditProfilePage() {
 
   return (
     <main className="max-w-md mx-auto px-4 py-8">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-sm text-gray-500 hover:text-primary-600 mb-6 transition-colors">
-        <ChevronLeft size={16} />
-        {lang === 'he' ? 'חזרה' : 'Back'}
-      </button>
+      <BackButton onClick={() => navigate(-1)} className="mb-6" />
 
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">{lang === 'he' ? 'עריכת פרופיל' : 'Edit profile'}</h1>
