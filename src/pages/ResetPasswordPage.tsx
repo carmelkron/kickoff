@@ -1,8 +1,15 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useLang } from '../contexts/LanguageContext';
+import { requireSupabase } from '../lib/supabase';
+
+function getRecoveryErrorMessage(lang: 'he' | 'en') {
+  return lang === 'he'
+    ? 'אי אפשר לאמת את קישור האיפוס. פתח את הקישור מחדש מתוך המייל.'
+    : 'We could not verify your reset link. Open it again from the email.';
+}
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
@@ -13,10 +20,79 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingSession, setLoadingSession] = useState(true);
+  const [sessionReady, setSessionReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const supabase = requireSupabase();
+
+    async function prepareRecoverySession() {
+      setLoadingSession(true);
+      setError('');
+
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash);
+      const code = searchParams.get('code');
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+
+      let sessionError: string | null = null;
+
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          sessionError = exchangeError.message;
+        }
+      } else if (accessToken && refreshToken) {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (setSessionError) {
+          sessionError = setSessionError.message;
+        }
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!active) {
+        return;
+      }
+
+      if (sessionError || !session) {
+        setSessionReady(false);
+        setError(sessionError ?? getRecoveryErrorMessage(lang));
+        setLoadingSession(false);
+        return;
+      }
+
+      if (window.location.search || window.location.hash) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      setSessionReady(true);
+      setLoadingSession(false);
+    }
+
+    void prepareRecoverySession();
+
+    return () => {
+      active = false;
+    };
+  }, [lang]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError('');
+
+    if (!sessionReady) {
+      setError(getRecoveryErrorMessage(lang));
+      return;
+    }
 
     if (password !== confirm) {
       setError(lang === 'he' ? 'הסיסמאות לא תואמות.' : 'Passwords do not match.');
@@ -86,11 +162,17 @@ export default function ResetPasswordPage() {
               />
             </div>
 
+            {loadingSession ? (
+              <p className="text-sm text-gray-500">
+                {lang === 'he' ? 'מאמתים את קישור האיפוס...' : 'Verifying your reset link...'}
+              </p>
+            ) : null}
+
             {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || loadingSession || !sessionReady}
               className="w-full rounded-2xl bg-primary-600 py-3 font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
             >
               {submitting
