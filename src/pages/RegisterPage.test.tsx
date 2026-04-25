@@ -5,12 +5,34 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import RegisterPage from './RegisterPage';
 
 const registerMock = vi.fn();
-let currentUser: { id: string } | null = null;
+const completeRequiredOnboardingMock = vi.fn();
+const completeOptionalOnboardingMock = vi.fn();
+const skipOptionalOnboardingMock = vi.fn();
+
+let currentUser:
+  | {
+      id: string;
+      name: string;
+      email: string;
+      position?: string;
+      avatarColor: string;
+      onboardingStatus: 'pending_required' | 'pending_optional' | 'complete';
+      authProvider: 'email' | 'google';
+      photoUrl?: string;
+      bio?: string;
+      homeLatitude?: number;
+      homeLongitude?: number;
+      homeAddress?: string;
+    }
+  | null = null;
 
 vi.mock('../contexts/SupabaseAuthContext', () => ({
   useAuth: () => ({
     currentUser,
     register: registerMock,
+    completeRequiredOnboarding: completeRequiredOnboardingMock,
+    completeOptionalOnboarding: completeOptionalOnboardingMock,
+    skipOptionalOnboarding: skipOptionalOnboardingMock,
   }),
 }));
 
@@ -29,17 +51,21 @@ vi.mock('../components/GooglePlacesAutocomplete', () => ({
     <div>
       <button
         type="button"
-        onClick={() => onSelect({
-          address: '1 Test St',
-          city: 'Tel Aviv',
-          latitude: 32.0853,
-          longitude: 34.7818,
-          placeId: 'place-home',
-        })}
+        onClick={() =>
+          onSelect({
+            address: '1 Test St',
+            city: 'Tel Aviv',
+            latitude: 32.0853,
+            longitude: 34.7818,
+            placeId: 'place-home',
+          })
+        }
       >
         Mock select place
       </button>
-      <button type="button" onClick={onClear}>Mock clear place</button>
+      <button type="button" onClick={onClear}>
+        Mock clear place
+      </button>
     </div>
   ),
 }));
@@ -61,7 +87,7 @@ function renderRegisterPage() {
   );
 }
 
-async function fillValidRegisterForm(user: ReturnType<typeof userEvent.setup>) {
+async function fillStepOne(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByPlaceholderText('John Doe'), 'Jane Doe');
   await user.type(screen.getByPlaceholderText('you@example.com'), 'jane@example.com');
   const passwordInputs = screen.getAllByPlaceholderText('••••••');
@@ -73,18 +99,28 @@ async function fillValidRegisterForm(user: ReturnType<typeof userEvent.setup>) {
 describe('RegisterPage', () => {
   beforeEach(() => {
     currentUser = null;
-    registerMock.mockReset();
+    registerMock.mockReset().mockResolvedValue(null);
+    completeRequiredOnboardingMock.mockReset().mockResolvedValue(null);
+    completeOptionalOnboardingMock.mockReset().mockResolvedValue(null);
+    skipOptionalOnboardingMock.mockReset().mockResolvedValue(null);
   });
 
-  it('redirects authenticated users home', () => {
-    currentUser = { id: 'user-1' };
+  it('redirects completed users home', () => {
+    currentUser = {
+      id: 'user-1',
+      name: 'User',
+      email: 'user@example.com',
+      avatarColor: 'bg-blue-500',
+      onboardingStatus: 'complete',
+      authProvider: 'email',
+    };
 
     renderRegisterPage();
 
     expect(screen.getByText('Home Page')).toBeInTheDocument();
   });
 
-  it('shows the first validation error without calling register', async () => {
+  it('shows the first validation error on step one without calling register', async () => {
     const user = userEvent.setup();
     renderRegisterPage();
 
@@ -94,22 +130,18 @@ describe('RegisterPage', () => {
     await user.type(passwordInputs[0], 'secret12');
     await user.type(passwordInputs[1], 'secret12');
     await user.selectOptions(screen.getByRole('combobox'), 'Midfield');
-    await user.click(screen.getByRole('button', { name: 'Create Profile' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(await screen.findByText('Name must be between 2 and 80 characters.')).toBeInTheDocument();
     expect(registerMock).not.toHaveBeenCalled();
   });
 
-  it('submits a valid registration and navigates home', async () => {
+  it('submits the basic step and moves to the optional step', async () => {
     const user = userEvent.setup();
-    registerMock.mockResolvedValue(null);
     renderRegisterPage();
 
-    await fillValidRegisterForm(user);
-    await user.click(screen.getByRole('button', { name: 'Mock select place' }));
-    expect(screen.getByTestId('selected-place-notice')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Create Profile' }));
+    await fillStepOne(user);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     await waitFor(() => {
       expect(registerMock).toHaveBeenCalledWith({
@@ -119,26 +151,55 @@ describe('RegisterPage', () => {
         initials: 'JD',
         avatarColor: 'bg-blue-500',
         position: 'Midfield',
-        bio: undefined,
         photoFile: undefined,
+      });
+    });
+  });
+
+  it('renders the optional step for pending_optional users and saves it', async () => {
+    currentUser = {
+      id: 'user-1',
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      avatarColor: 'bg-blue-500',
+      onboardingStatus: 'pending_optional',
+      authProvider: 'email',
+    };
+
+    const user = userEvent.setup();
+    renderRegisterPage();
+
+    await user.type(screen.getByPlaceholderText('Tell us a bit about yourself...'), 'Box-to-box midfielder');
+    await user.click(screen.getByRole('button', { name: 'Mock select place' }));
+    expect(screen.getByTestId('selected-place-notice')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save and finish' }));
+
+    await waitFor(() => {
+      expect(completeOptionalOnboardingMock).toHaveBeenCalledWith({
+        bio: 'Box-to-box midfielder',
         homeLatitude: 32.0853,
         homeLongitude: 34.7818,
         homeAddress: '1 Test St',
       });
     });
-
-    expect(await screen.findByText('Home Page')).toBeInTheDocument();
   });
 
-  it('renders register failures returned by the auth layer', async () => {
+  it('lets users skip the optional step', async () => {
+    currentUser = {
+      id: 'user-1',
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      avatarColor: 'bg-blue-500',
+      onboardingStatus: 'pending_optional',
+      authProvider: 'email',
+    };
+
     const user = userEvent.setup();
-    registerMock.mockResolvedValue('Email already exists');
     renderRegisterPage();
 
-    await fillValidRegisterForm(user);
-    await user.click(screen.getByRole('button', { name: 'Create Profile' }));
+    await user.click(screen.getByRole('button', { name: 'Skip' }));
 
-    expect(await screen.findByText('Email already exists')).toBeInTheDocument();
-    expect(screen.queryByText('Home Page')).not.toBeInTheDocument();
+    expect(skipOptionalOnboardingMock).toHaveBeenCalledTimes(1);
   });
 });

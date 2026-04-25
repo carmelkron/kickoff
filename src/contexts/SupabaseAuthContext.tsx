@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { AuthUser, LobbyHistoryEntry, RatingEntry } from '../types';
+import type { AuthUser, LobbyHistoryEntry, OnboardingStatus, RatingEntry } from '../types';
 import {
   createFriendRequestNotification,
   markFriendRequestNotificationsHandled,
@@ -7,7 +7,7 @@ import {
 import { fetchCompetitiveProfileStats, fetchProfileSkillsMap } from '../lib/appData';
 import { requireSupabase } from '../lib/supabase';
 import { uploadAvatar } from '../lib/storage';
-import { normalizeText, validateRegisterDraft } from '../lib/validation';
+import { normalizeText, validateRegisterOptionalDraft, validateRegisterStepOneDraft } from '../lib/validation';
 import type { User } from '@supabase/supabase-js';
 
 type ProfileRow = {
@@ -28,6 +28,7 @@ type ProfileRow = {
   home_latitude: number | null;
   home_longitude: number | null;
   home_address: string | null;
+  onboarding_status: OnboardingStatus;
 };
 
 type FriendRequestRow = {
@@ -50,10 +51,31 @@ type RegisterInput = {
   homeAddress?: string;
 };
 
+type RequiredOnboardingInput = {
+  name: string;
+  email: string;
+  initials: string;
+  avatarColor: string;
+  position: string;
+  photoFile?: File;
+};
+
+type OptionalOnboardingInput = {
+  bio?: string;
+  homeLatitude?: number;
+  homeLongitude?: number;
+  homeAddress?: string;
+};
+
 interface AuthContextType {
   currentUser: AuthUser | null;
   login: (email: string, password: string) => Promise<string | null>;
   register: (data: RegisterInput) => Promise<string | null>;
+  startPasswordReset: (email: string) => Promise<string | null>;
+  updatePassword: (password: string) => Promise<string | null>;
+  completeRequiredOnboarding: (data: RequiredOnboardingInput) => Promise<string | null>;
+  completeOptionalOnboarding: (data: OptionalOnboardingInput) => Promise<string | null>;
+  skipOptionalOnboarding: () => Promise<string | null>;
   logout: () => Promise<void>;
   getAllUsers: () => AuthUser[];
   sendFriendRequest: (targetId: string) => Promise<void>;
@@ -81,6 +103,8 @@ function mapProfileToAuthUser(
     id: profile.id,
     name: profile.name,
     email: profile.email ?? '',
+    onboardingStatus: profile.onboarding_status ?? 'complete',
+    authProvider: 'email',
     initials: profile.initials,
     avatarColor: profile.avatar_color,
     rating: profile.rating,
@@ -119,6 +143,14 @@ function buildFallbackName(email: string | undefined) {
   return cleaned ? cleaned.replace(/\b\w/g, (char) => char.toUpperCase()) : 'Player';
 }
 
+function buildAuthRedirectUrl(path: string) {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  return new URL(path, window.location.origin).toString();
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = requireSupabase();
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -136,6 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       homeLatitude?: number;
       homeLongitude?: number;
       homeAddress?: string;
+      onboardingStatus?: OnboardingStatus;
     },
   ) {
     const { data: existingProfile, error: existingProfileError } = await supabase
@@ -157,6 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const name = normalizeText(
       overrides?.name ??
         (typeof metadata.name === 'string' ? metadata.name : '') ??
+        (typeof metadata.full_name === 'string' ? metadata.full_name : '') ??
         buildFallbackName(authUser.email),
     );
     const initials =
@@ -175,7 +209,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (typeof metadata.bio === 'string' ? metadata.bio : undefined);
     const photoUrl =
       overrides?.photoUrl ??
-      (typeof metadata.photoUrl === 'string' ? metadata.photoUrl : null);
+      (typeof metadata.photoUrl === 'string' ? metadata.photoUrl : null) ??
+      (typeof metadata.avatar_url === 'string' ? metadata.avatar_url : null);
+    const onboardingStatus = overrides?.onboardingStatus ?? 'complete';
 
     const { error: insertProfileError } = await supabase.from('profiles').insert({
       id: authUser.id,
@@ -195,6 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       home_latitude: overrides?.homeLatitude ?? null,
       home_longitude: overrides?.homeLongitude ?? null,
       home_address: overrides?.homeAddress ?? null,
+      onboarding_status: onboardingStatus,
     });
 
     if (insertProfileError) {
@@ -207,7 +244,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function refresh(authUserId: string | null) {
     const { data: profilesData, error: profilesError } = await supabase
       .from('profiles')
-      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, rating_history, lobby_history, home_latitude, home_longitude, home_address')
+      .select('id, auth_user_id, email, name, initials, avatar_color, rating, games_played, competitive_points, position, bio, photo_url, rating_history, lobby_history, home_latitude, home_longitude, home_address, onboarding_status')
       .order('name', { ascending: true });
 
     if (profilesError) {
@@ -335,13 +372,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (data: RegisterInput): Promise<string | null> => {
-    const validationErrors = validateRegisterDraft({
+    const validationErrors = validateRegisterStepOneDraft({
       name: data.name,
       email: data.email,
       password: data.password ?? '',
+      confirm: data.password,
       position: data.position,
-      bio: data.bio,
       photoFile: data.photoFile ?? null,
+    }, {
+      requirePassword: true,
+      requirePosition: true,
     });
 
     if (validationErrors.length > 0) {
@@ -392,8 +432,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           initials: data.initials,
           avatarColor: data.avatarColor,
           position: data.position,
-          bio: data.bio,
           photoUrl: recoveredPhotoUrl,
+          onboardingStatus: 'pending_optional',
         });
 
         await refresh(existingAuthUser.id);
@@ -422,19 +462,135 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await ensureProfileForAuthUser(authUser, {
         name: normalizeText(data.name),
         initials: data.initials,
-          avatarColor: data.avatarColor,
-          position: data.position,
-          bio: data.bio,
-          photoUrl,
+        avatarColor: data.avatarColor,
+        position: data.position,
+        photoUrl,
         homeLatitude: data.homeLatitude,
         homeLongitude: data.homeLongitude,
         homeAddress: data.homeAddress,
+        onboardingStatus: 'pending_optional',
       });
     } catch (profileError) {
       return profileError instanceof Error ? profileError.message : 'Failed to create profile';
     }
 
     await refresh(authUser.id);
+    return null;
+  };
+
+  const completeRequiredOnboarding = async (data: RequiredOnboardingInput): Promise<string | null> => {
+    if (!currentUser) {
+      return 'You need to be signed in to continue.';
+    }
+
+    const validationErrors = validateRegisterStepOneDraft({
+      name: data.name,
+      email: data.email,
+      password: '',
+      position: data.position,
+      photoFile: data.photoFile ?? null,
+    }, {
+      requirePassword: false,
+      requirePosition: true,
+    });
+
+    if (validationErrors.length > 0) {
+      return validationErrors[0];
+    }
+
+    let photoUrl = currentUser.photoUrl ?? null;
+    if (data.photoFile) {
+      try {
+        photoUrl = await uploadAvatar(data.photoFile, currentUser.id);
+      } catch (uploadError) {
+        return uploadError instanceof Error ? uploadError.message : 'Failed to upload avatar';
+      }
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        name: normalizeText(data.name),
+        initials: data.initials,
+        avatar_color: data.avatarColor,
+        position: normalizeText(data.position),
+        photo_url: photoUrl,
+        onboarding_status: 'pending_optional',
+      })
+      .eq('id', currentUser.id);
+
+    if (error) {
+      return error.message;
+    }
+
+    await refreshCurrentUser();
+    return null;
+  };
+
+  const completeOptionalOnboarding = async (data: OptionalOnboardingInput): Promise<string | null> => {
+    if (!currentUser) {
+      return 'You need to be signed in to continue.';
+    }
+
+    const validationErrors = validateRegisterOptionalDraft({
+      bio: data.bio,
+    });
+
+    if (validationErrors.length > 0) {
+      return validationErrors[0];
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        bio: data.bio ? normalizeText(data.bio) : null,
+        home_latitude: data.homeLatitude ?? null,
+        home_longitude: data.homeLongitude ?? null,
+        home_address: data.homeAddress ?? null,
+        onboarding_status: 'complete',
+      })
+      .eq('id', currentUser.id);
+
+    if (error) {
+      return error.message;
+    }
+
+    await refreshCurrentUser();
+    return null;
+  };
+
+  const skipOptionalOnboarding = async (): Promise<string | null> => {
+    return completeOptionalOnboarding({
+      bio: currentUser?.bio,
+      homeLatitude: currentUser?.homeLatitude,
+      homeLongitude: currentUser?.homeLongitude,
+      homeAddress: currentUser?.homeAddress,
+    });
+  };
+
+  const startPasswordReset = async (email: string): Promise<string | null> => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      return 'Enter your email address.';
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo: buildAuthRedirectUrl('/reset-password'),
+    });
+
+    return error ? error.message : null;
+  };
+
+  const updatePassword = async (password: string): Promise<string | null> => {
+    if (password.length < 6 || password.length > 72) {
+      return 'Password must be between 6 and 72 characters.';
+    }
+
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) {
+      return error.message;
+    }
+
     return null;
   };
 
@@ -543,6 +699,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         currentUser,
         login,
         register,
+        startPasswordReset,
+        updatePassword,
+        completeRequiredOnboarding,
+        completeOptionalOnboarding,
+        skipOptionalOnboarding,
         logout,
         getAllUsers,
         sendFriendRequest,

@@ -20,6 +20,7 @@ create table if not exists public.profiles (
   rating_history jsonb not null default '[]'::jsonb,
   lobby_history jsonb not null default '[]'::jsonb,
   is_mock boolean not null default false,
+  onboarding_status text not null default 'complete' check (onboarding_status in ('pending_required', 'pending_optional', 'complete')),
   created_at timestamptz not null default now()
 );
 
@@ -27,6 +28,7 @@ alter table public.profiles add column if not exists home_latitude double precis
 alter table public.profiles add column if not exists home_longitude double precision;
 alter table public.profiles add column if not exists home_address text;
 alter table public.profiles add column if not exists competitive_points integer not null default 0;
+alter table public.profiles add column if not exists onboarding_status text not null default 'complete';
 
 create table if not exists public.lobbies (
   id text primary key,
@@ -107,6 +109,8 @@ alter table public.profiles drop constraint if exists profiles_competitive_point
 alter table public.profiles add constraint profiles_competitive_points_non_negative_check check (competitive_points >= 0);
 alter table public.profiles drop constraint if exists profiles_bio_length_check;
 alter table public.profiles add constraint profiles_bio_length_check check (bio is null or char_length(bio) <= 280);
+alter table public.profiles drop constraint if exists profiles_onboarding_status_check;
+alter table public.profiles add constraint profiles_onboarding_status_check check (onboarding_status in ('pending_required', 'pending_optional', 'complete'));
 
 alter table public.lobbies drop constraint if exists lobbies_title_length_check;
 alter table public.lobbies add constraint lobbies_title_length_check check (char_length(trim(title)) between 3 and 80);

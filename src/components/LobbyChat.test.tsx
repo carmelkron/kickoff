@@ -51,6 +51,8 @@ function makeCurrentUser(overrides: Partial<AuthUser> = {}): AuthUser {
     id: 'viewer-1',
     name: 'Viewer User',
     email: 'viewer@example.com',
+    onboardingStatus: 'complete',
+    authProvider: 'email',
     initials: 'VU',
     avatarColor: 'bg-green-500',
     rating: 6,

@@ -10,6 +10,8 @@ function makeUser(
     id,
     name: `User ${id}`,
     email: `${id}@example.com`,
+    onboardingStatus: 'complete',
+    authProvider: 'email',
     initials: 'US',
     avatarColor: 'bg-blue-500',
     rating: 5,

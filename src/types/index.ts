@@ -11,6 +11,8 @@ export type LobbyInviteStatus = 'pending' | 'accepted' | 'revoked';
 export type LobbyJoinRequestStatus = 'pending' | 'approved' | 'declined';
 export type SearchHistoryEntryKind = 'query' | 'profile' | 'lobby';
 export type SearchResultKind = 'profile' | 'lobby';
+export type OnboardingStatus = 'pending_required' | 'pending_optional' | 'complete';
+export type AuthProvider = 'email' | 'google';
 export type NetworkRecommendationBucket =
   | 'played_together'
   | 'mutual_friends'
@@ -274,6 +276,8 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  onboardingStatus: OnboardingStatus;
+  authProvider: AuthProvider;
   password?: string;
   initials: string;
   avatarColor: string;

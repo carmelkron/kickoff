@@ -5,8 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import LoginLive from './LoginLive';
 
 const loginMock = vi.fn();
-
-let currentUser: { id: string; name: string } | null = null;
+let currentUser: { id: string; name: string; onboardingStatus: 'pending_optional' | 'complete' } | null = null;
 
 vi.mock('../contexts/SupabaseAuthContext', () => ({
   useAuth: () => ({
@@ -30,6 +29,7 @@ function renderLoginPage() {
         <Route path="/login" element={<LoginLive />} />
         <Route path="/" element={<div>Home Page</div>} />
         <Route path="/register" element={<div>Register Page</div>} />
+        <Route path="/forgot-password" element={<div>Forgot Password Page</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -41,12 +41,20 @@ describe('LoginLive', () => {
     loginMock.mockReset().mockResolvedValue(null);
   });
 
-  it('redirects authenticated users home', async () => {
-    currentUser = { id: 'user-1', name: 'Signed In User' };
+  it('redirects fully onboarded users home', async () => {
+    currentUser = { id: 'user-1', name: 'Signed In User', onboardingStatus: 'complete' };
 
     renderLoginPage();
 
     expect(await screen.findByText('Home Page')).toBeInTheDocument();
+  });
+
+  it('redirects incomplete users to register', async () => {
+    currentUser = { id: 'user-1', name: 'Signed In User', onboardingStatus: 'pending_optional' };
+
+    renderLoginPage();
+
+    expect(await screen.findByText('Register Page')).toBeInTheDocument();
   });
 
   it('logs the user in and navigates home on success', async () => {
@@ -61,6 +69,15 @@ describe('LoginLive', () => {
       expect(loginMock).toHaveBeenCalledWith('player@example.com', 'super-secret');
     });
     expect(await screen.findByText('Home Page')).toBeInTheDocument();
+  });
+
+  it('links to forgot-password', async () => {
+    const user = userEvent.setup();
+    renderLoginPage();
+
+    await user.click(screen.getByRole('link', { name: /Forgot password/i }));
+
+    expect(await screen.findByText('Forgot Password Page')).toBeInTheDocument();
   });
 
   it('shows auth errors and lets the form recover', async () => {

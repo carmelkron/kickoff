@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Bell, Gift, Home, PlusSquare, Search, Trophy, Users } from 'lucide-react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useLang } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/SupabaseAuthContext';
 import { useNotificationCenter } from '../hooks/useNotificationCenter';
@@ -31,6 +31,10 @@ export default function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [pendingResultReminder, setPendingResultReminder] = useState<PendingLobbyResultReminder | null>(null);
+
+  if (currentUser?.onboardingStatus && currentUser.onboardingStatus !== 'complete') {
+    return <Navigate to="/register" replace />;
+  }
 
   useEffect(() => {
     if (!currentUser) {

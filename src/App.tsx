@@ -9,6 +9,7 @@ import CreateLobby from './pages/CreateLobbyPage';
 import EditLobby from './pages/EditLobbyPage';
 import Register from './pages/RegisterPage';
 import Login from './pages/LoginLive';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import Profile from './pages/ProfileLive';
 import ProfileFriendsPage from './pages/ProfileFriendsPage';
 import ProfileHistoryPage from './pages/ProfileHistoryPage';
@@ -19,6 +20,7 @@ import NetworkDiscoveryBucketPage from './pages/NetworkDiscoveryBucketPage';
 import RafflesPage from './pages/RafflesPage';
 import LeaderboardsPage from './pages/LeaderboardsPage';
 import SettingsPage from './pages/SettingsPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 export default function App() {
   return (
@@ -46,6 +48,8 @@ export default function App() {
                 </Route>
                 <Route path="/register" element={<Register />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
               </Routes>
             </div>
           </BrowserRouter>

@@ -15,6 +15,11 @@ export type RegisterDraft = {
   photoFile?: File | null;
 };
 
+type RegisterStepOneValidationOptions = {
+  requirePassword?: boolean;
+  requirePosition?: boolean;
+};
+
 export type CreateLobbyDraft = {
   title: string;
   address: string;
@@ -95,10 +100,23 @@ export function validateProfileSkills(skills: string[]) {
 }
 
 export function validateRegisterDraft(input: RegisterDraft) {
+  const stepOneErrors = validateRegisterStepOneDraft(input, {
+    requirePassword: true,
+    requirePosition: true,
+  });
+  const optionalErrors = validateRegisterOptionalDraft({ bio: input.bio });
+  return [...stepOneErrors, ...optionalErrors];
+}
+
+export function validateRegisterStepOneDraft(
+  input: RegisterDraft,
+  options: RegisterStepOneValidationOptions = {},
+) {
   const errors: string[] = [];
   const name = normalizeText(input.name);
   const email = input.email.trim().toLowerCase();
-  const bio = input.bio ? normalizeText(input.bio) : '';
+  const requirePassword = options.requirePassword ?? true;
+  const requirePosition = options.requirePosition ?? true;
 
   if (name.length < 2 || name.length > 80) {
     errors.push('Name must be between 2 and 80 characters.');
@@ -108,20 +126,18 @@ export function validateRegisterDraft(input: RegisterDraft) {
     errors.push('Enter a valid email address.');
   }
 
-  if (input.password.length < 6 || input.password.length > 72) {
-    errors.push('Password must be between 6 and 72 characters.');
+  if (requirePassword) {
+    if (input.password.length < 6 || input.password.length > 72) {
+      errors.push('Password must be between 6 and 72 characters.');
+    }
+
+    if (typeof input.confirm === 'string' && input.password !== input.confirm) {
+      errors.push('Passwords do not match.');
+    }
   }
 
-  if (typeof input.confirm === 'string' && input.password !== input.confirm) {
-    errors.push('Passwords do not match.');
-  }
-
-  if (!input.position || normalizeText(input.position).length === 0) {
+  if (requirePosition && (!input.position || normalizeText(input.position).length === 0)) {
     errors.push('Choose your preferred position.');
-  }
-
-  if (bio.length > 280) {
-    errors.push('Bio must be 280 characters or fewer.');
   }
 
   if (input.photoFile) {
@@ -132,6 +148,17 @@ export function validateRegisterDraft(input: RegisterDraft) {
     if (input.photoFile.size > MAX_AVATAR_BYTES) {
       errors.push('Profile photo must be 2 MB or smaller.');
     }
+  }
+
+  return errors;
+}
+
+export function validateRegisterOptionalDraft(input: Pick<RegisterDraft, 'bio'>) {
+  const errors: string[] = [];
+  const bio = input.bio ? normalizeText(input.bio) : '';
+
+  if (bio.length > 280) {
+    errors.push('Bio must be 280 characters or fewer.');
   }
 
   return errors;
