@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ResetPasswordPage from './ResetPasswordPage';
 
 const updatePasswordMock = vi.fn();
+const logoutMock = vi.fn();
 const exchangeCodeForSessionMock = vi.fn();
 const setSessionMock = vi.fn();
 const getSessionMock = vi.fn();
@@ -12,6 +13,7 @@ const getSessionMock = vi.fn();
 vi.mock('../contexts/SupabaseAuthContext', () => ({
   useAuth: () => ({
     updatePassword: (...args: unknown[]) => updatePasswordMock(...args),
+    logout: (...args: unknown[]) => logoutMock(...args),
   }),
 }));
 
@@ -44,6 +46,7 @@ vi.mock('../lib/supabase', () => ({
 describe('ResetPasswordPage', () => {
   beforeEach(() => {
     updatePasswordMock.mockReset().mockResolvedValue(null);
+    logoutMock.mockReset().mockResolvedValue(undefined);
     exchangeCodeForSessionMock.mockReset().mockResolvedValue({ error: null });
     setSessionMock.mockReset().mockResolvedValue({ error: null });
     getSessionMock.mockReset().mockResolvedValue({
@@ -99,6 +102,7 @@ describe('ResetPasswordPage', () => {
     await waitFor(() => {
       expect(updatePasswordMock).toHaveBeenCalledWith('secret12');
     });
+    expect(logoutMock).toHaveBeenCalledTimes(1);
     expect(await screen.findByText('Your password was updated successfully.')).toBeInTheDocument();
   });
 

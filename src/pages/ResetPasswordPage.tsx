@@ -13,7 +13,7 @@ function getRecoveryErrorMessage(lang: 'he' | 'en') {
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate();
-  const { updatePassword } = useAuth();
+  const { updatePassword, logout } = useAuth();
   const { lang } = useLang();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -107,6 +107,7 @@ export default function ResetPasswordPage() {
       return;
     }
 
+    await logout();
     setDone(true);
     setSubmitting(false);
     window.setTimeout(() => navigate('/login', { replace: true }), 1200);
